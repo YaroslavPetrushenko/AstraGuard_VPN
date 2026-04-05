@@ -271,14 +271,15 @@ bot.on("text", async (ctx, next) => {
     return;
   }
 
-  // Промокод
-  // Промокод или реферальный код
-  // Промокод или реферальный код
+  // ===============================
+  // ПРОМОКОД / РЕФЕРАЛКА
+  // ===============================
   if (!state || state.step !== "promo") return next();
 
   const text = ctx.message.text.trim().toUpperCase();
   let referrerId = null;
 
+  // Берём тариф один раз
   const tariff = TARIFFS.find((t) => t.id === state.tariffId);
   if (!tariff) return ctx.reply("Ошибка: тариф не найден.");
 
@@ -314,11 +315,9 @@ bot.on("text", async (ctx, next) => {
     referrerId = refUser.id;
   }
 
-
-
-  const tariff = TARIFFS.find((t) => t.id === state.tariffId);
-  if (!tariff) return ctx.reply("Ошибка: тариф не найден.");
-
+  // ===============================
+  // СОЗДАНИЕ ПЛАТЕЖА
+  // ===============================
   const orderId = generateOrderId(ctx.from.id, tariff.id);
 
   payments.set(orderId, {
@@ -341,7 +340,7 @@ bot.on("text", async (ctx, next) => {
       KASSA_CREATE_URL,
       {
         shop_id: KASSA_SHOP_ID,
-        amount: finalPrice,
+        amount: finalPrice, // ← ЛОКАЛЬНАЯ ЦЕНА
         order_id: orderId,
         description: `Подписка ${tariff.title}`,
         callback_url: WEBHOOK_URL,
