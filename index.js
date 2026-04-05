@@ -337,24 +337,21 @@ bot.on("text", async (ctx, next) => {
 
   try {
     const res = await axios.post(
-      KASSA_CREATE_URL,
+      "https://anypay.io/api/v3/invoice/create",
       {
-        shop_id: KASSA_SHOP_ID,
-        amount: finalPrice, // ← ЛОКАЛЬНАЯ ЦЕНА
+        api_id: "6UQFFQBVEOTVG5ZO8U",
+        api_key: "NhpyWSDreOHxQVy4CZU4yu1VkPkcEBesBmf0mNc",
+        amount: finalPrice,
         order_id: orderId,
         description: `Подписка ${tariff.title}`,
-        callback_url: WEBHOOK_URL,
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${KASSA_API_KEY}`,
-          "Content-Type": "application/json",
-        },
+        callback_url: "https://ТВОЙ_ДОМЕН/anypay/webhook",
+        success_url: "https://t.me/AstraGuardVPN_bot",
+        fail_url: "https://t.me/AstraGuardVPN_bot"
       }
     );
 
-    const payUrl = res.data.url || res.data.payment_url;
-    userState.delete(ctx.from.id);
+    const payUrl = res.data.data.url;
+
 
     ctx.reply(
       `Отлично!\nОплати по ссылке:\n${payUrl}\n\n` +
@@ -373,22 +370,34 @@ bot.on("text", async (ctx, next) => {
 const app = express();
 app.use(bodyParser.json());
 
-app.post("/kassa/webhook", async (req, res) => {
+app.post("/anypay/webhook", async (req, res) => {
   const data = req.body;
-  console.log("Webhook:", data);
 
-  const { order_id, status } = data;
+  const { order_id, status, sign } = data;
+
+  // Проверка подписи
+  const crypto = require("crypto");
+  const check = crypto
+    .createHash("sha256")
+    .update(order_id + "JPqLuGMxDCtdIa8gqGGMVbtUOo28Rgf08Vrhk5B")
+    .digest("hex");
+
+  if (check !== sign) {
+    console.log("❌ Неверная подпись");
+    return res.send("INVALID SIGN");
+  }
+
   const payment = payments.get(order_id);
-
   if (!payment) return res.send("OK");
 
-  if (status !== "success") {
+  if (status !== "paid") {
     payment.status = "failed";
     return res.send("OK");
   }
 
   payment.status = "success";
 
+  // Дальше — твоя логика активации подписки (оставляем как есть)
   const { userId, tariffId, referrerId } = payment;
   const tariff = TARIFFS.find((t) => t.id === tariffId);
 
@@ -408,7 +417,6 @@ app.post("/kassa/webhook", async (req, res) => {
     lastKey: key,
   });
 
-  // рефереру — бонусные дни + paidCount++
   if (referrerId) {
     const refUser = getUser(referrerId);
     const refNow = Date.now();
@@ -438,6 +446,9 @@ app.post("/kassa/webhook", async (req, res) => {
 
   res.send("OK");
 });
+
+
+
 // ===============================
 // PHOTO BROADCAST (рассылка фото)
 // ===============================
