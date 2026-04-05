@@ -272,18 +272,44 @@ bot.on("text", async (ctx, next) => {
   }
 
   // Промокод
+  // Промокод или реферальный код
   if (!state || state.step !== "promo") return next();
 
-  const text = ctx.message.text.trim();
+  const text = ctx.message.text.trim().toUpperCase();
   let referrerId = null;
 
-  if (text.toLowerCase() !== "нет") {
+  // 1) Проверяем промокоды
+  const promo = PROMOCODES.find(p => p.code === text);
+
+  if (promo) {
+    if (promo.usesLeft <= 0) {
+      return ctx.reply("Этот промокод больше не действует.");
+    }
+
+    promo.usesLeft--;
+
+    const tariff = TARIFFS.find((t) => t.id === state.tariffId);
+    const newPrice = Math.round(tariff.price * (1 - promo.discount / 100));
+    tariff.price = newPrice;
+
+    ctx.reply(
+      `🎉 Промокод применён!\n` +
+      `Скидка: ${promo.discount}%\n` +
+      `Новая цена: ${newPrice}₽`
+    );
+
+    // Промокод ≠ рефералка
+    referrerId = null;
+  } else if (text !== "НЕТ") {
+    // 2) Проверяем реферальный код
     const refUser = findUserByReferralCode(text);
-    if (!refUser) return ctx.reply("Промокод не найден.");
+    if (!refUser) return ctx.reply("Промокод или реферальный код не найден.");
     if (String(refUser.id) === String(ctx.from.id))
-      return ctx.reply("Нельзя использовать свой промокод.");
+      return ctx.reply("Нельзя использовать свой реферальный код.");
+
     referrerId = refUser.id;
   }
+
 
   const tariff = TARIFFS.find((t) => t.id === state.tariffId);
   if (!tariff) return ctx.reply("Ошибка: тариф не найден.");
