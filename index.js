@@ -1,93 +1,33 @@
 // ===============================
-// CONFIG
-// ===============================
-const TELEGRAM_BOT_TOKEN = "8524463400:AAHXm2_YpkdXg8lY9aa8fZ_5ZTWwyUiB9HE";
-const KASSA_API_KEY = "API_KEY_KASSA_AI";
-const KASSA_SHOP_ID = "SHOP_ID_KASSA_AI";
-const KASSA_CREATE_URL = "https://paymentt.kassa.ai/api/v1/invoice";
-const WEBHOOK_URL = "https://ТВОЙ_ДОМЕН/kassa/webhook";
-
-const REFERRAL_BONUS_DAYS = 5;
-const TRIAL_DAYS = 1;
-const PROMOCODES = [];
-
-// Тарифы
-const TARIFFS = [
-  { id: "7d", title: "7 дней", days: 7, price: 49 },
-  { id: "30d", title: "30 дней", days: 30, price: 149 },
-  { id: "90d", title: "90 дней", days: 90, price: 349 },
-  { id: "180d", title: "180 дней", days: 180, price: 599 },
-  { id: "365d", title: "365 дней", days: 365, price: 999 },
-];
-
-// Твой Telegram ID (админ)
-const ADMIN_ID = 6784875182; // <-- ВСТАВЬ СВОЙ ID
-
-// ===============================
-// DEPENDENCIES
+// IMPORTS
 // ===============================
 const express = require("express");
 const bodyParser = require("body-parser");
-const axios = require("axios");
 const { Telegraf, Markup } = require("telegraf");
 
-// ===============================
-// STORAGE (in-memory)
-// ===============================
-const users = new Map();
-const payments = new Map();
-const userState = new Map();
+const {
+  TELEGRAM_BOT_TOKEN,
+  TARIFFS,
+  TRIAL_DAYS,
+  PROMOCODES,
+  REFERRAL_BONUS_DAYS,
+} = require("./config");
 
-function getUser(id) {
-  if (!users.has(id)) {
-    users.set(id, {
-      subscriptionUntil: null,
-      referralCode: `AG-${id}`,
-      referredBy: null,
-      invitedCount: 0,
-      paidCount: 0,
-      trialUsed: false,
-      lastKey: null,
-    });
-  }
-  return users.get(id);
-}
-
-function saveUser(id, data) {
-  users.set(id, { ...getUser(id), ...data });
-}
-
-function findUserByReferralCode(code) {
-  for (const [id, user] of users.entries()) {
-    if (user.referralCode === code) return { id, ...user };
-  }
-  return null;
-}
-
-function generateOrderId(userId, tariffId) {
-  return `ORD-${userId}-${tariffId}-${Date.now()}`;
-}
-
-function generateKey() {
-  return "KEY-" + Math.random().toString(36).substring(2, 10).toUpperCase();
-}
-
-function formatDate(ts) {
-  if (!ts) return "нет";
-  return new Date(ts).toLocaleString("ru-RU");
-}
+const { getUser, updateUser, findUserByReferralCode } = require("./users");
+const { createTrialKey, createPaidKey } = require("./keys");
+const payments = require("./payments");
+const registerAdminCommands = require("./admin");
+const registerBroadcast = require("./broadcast");
+const registerSupport = require("./support");
 
 // ===============================
-// TELEGRAM BOT
+// INIT BOT
 // ===============================
 const bot = new Telegraf(TELEGRAM_BOT_TOKEN);
 
-// Авто‑добавление всех пользователей
-bot.on("message", (ctx, next) => {
-  getUser(ctx.from.id);
-  return next();
-});
-
+// ===============================
+// HELPERS
+// ===============================
 function mainMenu() {
   return Markup.keyboard([
     ["🚀 Мой VPN", "💳 Купить подписку"],
@@ -97,21 +37,38 @@ function mainMenu() {
   ]).resize();
 }
 
-bot.start((ctx) => {
-  const user = getUser(ctx.from.id);
+function formatDate(ts) {
+  if (!ts) return "нет";
+  return new Date(ts).toLocaleString("ru-RU");
+}
+
+// ===============================
+// AUTO‑CREATE USER
+// ===============================
+bot.on("message", async (ctx, next) => {
+  await getUser(ctx.from.id);
+  next();
+});
+
+// ===============================
+// START
+// ===============================
+bot.start(async (ctx) => {
+  const user = await getUser(ctx.from.id);
   ctx.reply(
     `Привет, ${ctx.from.first_name}!\n\n` +
-    `Твой реферальный код: ${user.referralCode}\n\n` +
-    `Выбери действие в меню ниже.`,
+      `Твой реферальный код: ${user.referralCode}\n\n` +
+      `Выбери действие в меню ниже.`,
     mainMenu()
   );
 });
 
 // ===============================
-// МЕНЮ: МОЙ VPN
+// МОЙ VPN
 // ===============================
-bot.hears("🚀 Мой VPN", (ctx) => {
-  const user = getUser(ctx.from.id);
+bot.hears("🚀 Мой VPN", async (ctx) => {
+  const user = await getUser(ctx.from.id);
+
   const until = user.subscriptionUntil
     ? formatDate(user.subscriptionUntil)
     : "подписка не активна";
@@ -121,103 +78,81 @@ bot.hears("🚀 Мой VPN", (ctx) => {
     : "Ключ ещё не выдавался.";
 
   ctx.reply(
-    `📦 *Мой VPN*\n\n` +
-    `Статус подписки: ${until}\n\n` +
-    `${keyText}`,
+    `📦 *Мой VPN*\n\nСтатус подписки: ${until}\n\n${keyText}`,
     { parse_mode: "Markdown", ...mainMenu() }
   );
 });
 
 // ===============================
-// МЕНЮ: ПРОБНЫЙ ДОСТУП
+// ПРОБНЫЙ ДОСТУП
 // ===============================
-bot.hears("🆓 Пробный доступ", (ctx) => {
-  const userId = ctx.from.id;
-  const user = getUser(userId);
+bot.hears("🆓 Пробный доступ", async (ctx) => {
+  const user = await getUser(ctx.from.id);
 
-  if (user.trialUsed) {
-    return ctx.reply(
-      "Пробный доступ уже был активирован ранее.",
-      mainMenu()
-    );
-  }
+  if (user.trialUsed)
+    return ctx.reply("Пробный доступ уже был активирован ранее.", mainMenu());
 
-  const now = Date.now();
-  const trialUntil = now + TRIAL_DAYS * 86400000;
-  const key = generateKey();
+  const { key, expiresAt } = await createTrialKey(ctx.from.id, TRIAL_DAYS);
 
-  saveUser(userId, {
+  await updateUser(ctx.from.id, {
     trialUsed: true,
-    subscriptionUntil: trialUntil,
+    subscriptionUntil: expiresAt,
     lastKey: key,
   });
 
   ctx.reply(
-    `🆓 Пробный доступ активирован на ${TRIAL_DAYS} день.\n\n` +
-    `Подписка активна до: ${formatDate(trialUntil)}\n` +
-    `Твой ключ:\n\`${key}\``,
+    `🆓 Пробный доступ активирован!\n\n` +
+      `Подписка активна до: ${formatDate(expiresAt)}\n` +
+      `Твой ключ:\n\`${key}\``,
     { parse_mode: "Markdown", ...mainMenu() }
   );
 });
 
 // ===============================
-// МЕНЮ: РЕФЕРАЛЬНАЯ ПРОГРАММА
+// РЕФЕРАЛЬНАЯ ПРОГРАММА
 // ===============================
-bot.hears("👥 Реферальная программа", (ctx) => {
-  const user = getUser(ctx.from.id);
+bot.hears("👥 Реферальная программа", async (ctx) => {
+  const user = await getUser(ctx.from.id);
 
   ctx.reply(
     `👥 *Реферальная программа*\n\n` +
-    `Твой реферальный код:\n\`${user.referralCode}\`\n\n` +
-    `Приглашено всего: ${user.invitedCount}\n` +
-    `Из них оплатили: ${user.paidCount}\n\n` +
-    `Делись кодом с друзьями — за каждую оплату по твоему коду ты получаешь +${REFERRAL_BONUS_DAYS} дней к подписке.`,
+      `Твой реферальный код:\n\`${user.referralCode}\`\n\n` +
+      `Приглашено: ${user.invitedCount}\n` +
+      `Оплатили: ${user.paidCount}\n\n` +
+      `За каждую оплату по твоему коду — +${REFERRAL_BONUS_DAYS} дней.`,
     { parse_mode: "Markdown", ...mainMenu() }
   );
 });
 
 // ===============================
-// МЕНЮ: КАК ПОДКЛЮЧИТЬСЯ
+// КАК ПОДКЛЮЧИТЬСЯ
 // ===============================
 bot.hears("📱 Как подключиться?", (ctx) => {
   ctx.reply(
     "📱 *Как подключиться к VPN*\n\n" +
-    "1. Установи приложение VPN (WireGuard / OpenVPN / другое — как у тебя реально).\n" +
-    "2. Вставь выданный ключ или импортируй конфиг.\n" +
-    "3. Нажми «Подключиться».\n\n" +
-    "Если что-то не получается — напиши в поддержку.",
+      "1. Установи приложение VPN.\n" +
+      "2. Вставь выданный ключ.\n" +
+      "3. Нажми «Подключиться».",
     { parse_mode: "Markdown", ...mainMenu() }
   );
 });
 
 // ===============================
-// МЕНЮ: О СЕРВИСЕ
+// О СЕРВИСЕ
 // ===============================
 bot.hears("ℹ️ О сервисе", (ctx) => {
   ctx.reply(
-    "ℹ️ *О сервисе AstraGuardVPN*\n\n" +
-    "• Высокая скорость и стабильные сервера.\n" +
-    "• Защита трафика и конфиденциальность.\n" +
-    "• Удобная оплата и автоматическая выдача ключей.\n" +
-    "• Реферальная программа с бонусными днями.\n\n" +
-    "Сервис создан для комфортного и безопасного доступа к сети.",
+    "ℹ️ *AstraGuardVPN*\n\n" +
+      "• Быстрые сервера\n" +
+      "• Защита трафика\n" +
+      "• Автоматическая выдача ключей\n" +
+      "• Реферальная программа",
     { parse_mode: "Markdown", ...mainMenu() }
   );
 });
 
 // ===============================
-// МЕНЮ: ПОДДЕРЖКА
-// ===============================
-bot.hears("💬 Поддержка", (ctx) => {
-  ctx.reply(
-    "Напишите ваш вопрос одним сообщением. Техподдержка ответит вам в ближайшее время.",
-    mainMenu()
-  );
-  userState.set(ctx.from.id, { step: "support_waiting" });
-});
-
-// ===============================
-// МЕНЮ: КУПИТЬ ПОДПИСКУ
+// КУПИТЬ ПОДПИСКУ
 // ===============================
 bot.hears("💳 Купить подписку", (ctx) => {
   const buttons = TARIFFS.map((t) => [
@@ -229,362 +164,73 @@ bot.hears("💳 Купить подписку", (ctx) => {
 // ===============================
 // ВЫБОР ТАРИФА
 // ===============================
+const promoState = new Map();
+
 bot.action(/tariff_(.+)/, async (ctx) => {
   const tariffId = ctx.match[1];
-  const tariff = TARIFFS.find((t) => t.id === tariffId);
-  if (!tariff) return ctx.answerCbQuery("Ошибка: тариф не найден");
-
-  userState.set(ctx.from.id, { step: "promo", tariffId });
+  promoState.set(ctx.from.id, tariffId);
 
   await ctx.answerCbQuery();
-  await ctx.reply(
-    `Ты выбрал: ${tariff.title} за ${tariff.price}₽.\n\n` +
-    `Если есть промокод — отправь его.\nЕсли нет — напиши: "нет".`
-  );
+  ctx.reply("Введите промокод или реферальный код:");
 });
 
 // ===============================
-// ОБРАБОТКА ТЕКСТОВ: ПОДДЕРЖКА / ПРОМОКОД
+// ПРОМОКОД / РЕФЕРАЛКА
 // ===============================
 bot.on("text", async (ctx, next) => {
-  const state = userState.get(ctx.from.id);
+  const tariffId = promoState.get(ctx.from.id);
+  if (!tariffId) return next();
 
-  // Вопрос в поддержку
-  if (state && state.step === "support_waiting") {
-    const question = ctx.message.text;
+  const tariff = TARIFFS.find((t) => t.id === tariffId);
+  const code = ctx.message.text.trim().toUpperCase();
 
-    await ctx.reply(
-      "Ваш вопрос отправлен. Ожидайте ответа от техподдержки.",
-      mainMenu()
-    );
-
-    await bot.telegram.sendMessage(
-      ADMIN_ID,
-      `🆘 *Новый вопрос в поддержку*\n\n` +
-      `От: ${ctx.from.first_name} (@${ctx.from.username || "нет"})\n` +
-      `ID: ${ctx.from.id}\n\n` +
-      `Вопрос:\n${question}`,
-      { parse_mode: "Markdown" }
-    );
-
-    userState.delete(ctx.from.id);
-    return;
-  }
-
-  // ===============================
-  // ПРОМОКОД / РЕФЕРАЛКА
-  // ===============================
-  if (!state || state.step !== "promo") return next();
-
-  const text = ctx.message.text.trim().toUpperCase();
   let referrerId = null;
 
-  // Берём тариф один раз
-  const tariff = TARIFFS.find((t) => t.id === state.tariffId);
-  if (!tariff) return ctx.reply("Ошибка: тариф не найден.");
-
-  // Локальная цена (НЕ меняем глобальный тариф)
-  let finalPrice = tariff.price;
-
-  // 1) Проверяем промокоды
-  const promo = PROMOCODES.find(p => p.code === text);
-
-  if (promo) {
-    if (promo.usesLeft <= 0) {
-      return ctx.reply("Этот промокод больше не действует.");
-    }
-
-    promo.usesLeft--;
-
-    finalPrice = Math.round(finalPrice * (1 - promo.discount / 100));
-
-    ctx.reply(
-      `🎉 Промокод применён!\n` +
-      `Скидка: ${promo.discount}%\n` +
-      `Новая цена: ${finalPrice}₽`
-    );
-
-    referrerId = null; // промокод ≠ рефералка
-  } else if (text !== "НЕТ") {
-    // 2) Проверяем реферальный код
-    const refUser = findUserByReferralCode(text);
-    if (!refUser) return ctx.reply("Промокод или реферальный код не найден.");
-    if (String(refUser.id) === String(ctx.from.id))
-      return ctx.reply("Нельзя использовать свой реферальный код.");
-
-    referrerId = refUser.id;
+  const refUser = await findUserByReferralCode(code);
+  if (refUser && refUser.userId !== ctx.from.id) {
+    referrerId = refUser.userId;
   }
 
-  // ===============================
-  // СОЗДАНИЕ ПЛАТЕЖА
-  // ===============================
-  const orderId = generateOrderId(ctx.from.id, tariff.id);
+  promoState.delete(ctx.from.id);
 
-  payments.set(orderId, {
-    userId: ctx.from.id,
-    tariffId: tariff.id,
-    referrerId,
-    status: "pending",
-  });
-
-  // если есть реферер — увеличим invitedCount (приглашён)
-  if (referrerId) {
-    const refUser = getUser(referrerId);
-    saveUser(referrerId, {
-      invitedCount: (refUser.invitedCount || 0) + 1,
-    });
-  }
-
-  try {
-    const res = await axios.post(
-      "https://anypay.io/api/v3/invoice/create",
-      {
-        api_id: "6UQFFQBVEOTVG5ZO8U",
-        api_key: "NhpyWSDreOHxQVy4CZU4yu1VkPkcEBesBmf0mNc",
-        amount: finalPrice,
-        order_id: orderId,
-        description: `Подписка ${tariff.title}`,
-        callback_url: "https://ТВОЙ_ДОМЕН/anypay/webhook",
-        success_url: "https://t.me/AstraGuardVPN_bot",
-        fail_url: "https://t.me/AstraGuardVPN_bot"
-      }
-    );
-
-    const payUrl = res.data.data.url;
-
-
-    ctx.reply(
-      `Отлично!\nОплати по ссылке:\n${payUrl}\n\n` +
-      `После оплаты подписка активируется автоматически.`,
-      mainMenu()
-    );
-  } catch (err) {
-    console.log(err.response?.data || err);
-    ctx.reply("Ошибка при создании платежа.", mainMenu());
-  }
+  await payments.createPayment(ctx, tariff, referrerId, tariff.price, code);
 });
 
 // ===============================
-// WEBHOOK SERVER
+// ПОДДЕРЖКА
+// ===============================
+registerSupport(bot);
+
+// ===============================
+// АДМИН‑КОМАНДЫ
+// ===============================
+registerAdminCommands(bot);
+
+// ===============================
+// РАССЫЛКИ
+// ===============================
+registerBroadcast(bot);
+
+// ===============================
+// ФОТО‑РАССЫЛКА
+// ===============================
+photoBroadcast = require("./broadcastPhoto");
+if (photoBroadcast) photoBroadcast(bot);
+
+// ===============================
+// EXPRESS + WEBHOOK
 // ===============================
 const app = express();
 app.use(bodyParser.json());
 
 app.post("/anypay/webhook", async (req, res) => {
-  const data = req.body;
-
-  const { order_id, status, sign } = data;
-
-  // Проверка подписи
-  const crypto = require("crypto");
-  const check = crypto
-    .createHash("sha256")
-    .update(order_id + "JPqLuGMxDCtdIa8gqGGMVbtUOo28Rgf08Vrhk5B")
-    .digest("hex");
-
-  if (check !== sign) {
-    console.log("❌ Неверная подпись");
-    return res.send("INVALID SIGN");
-  }
-
-  const payment = payments.get(order_id);
-  if (!payment) return res.send("OK");
-
-  if (status !== "paid") {
-    payment.status = "failed";
-    return res.send("OK");
-  }
-
-  payment.status = "success";
-
-  // Дальше — твоя логика активации подписки (оставляем как есть)
-  const { userId, tariffId, referrerId } = payment;
-  const tariff = TARIFFS.find((t) => t.id === tariffId);
-
-  const user = getUser(userId);
-  const now = Date.now();
-  const current = user.subscriptionUntil > now ? user.subscriptionUntil : now;
-
-  let newUntil =
-    current +
-    tariff.days * 86400000 +
-    (referrerId ? REFERRAL_BONUS_DAYS * 86400000 : 0);
-
-  const key = generateKey();
-
-  saveUser(userId, {
-    subscriptionUntil: newUntil,
-    lastKey: key,
-  });
-
-  if (referrerId) {
-    const refUser = getUser(referrerId);
-    const refNow = Date.now();
-    const refCurrent =
-      refUser.subscriptionUntil > refNow ? refUser.subscriptionUntil : refNow;
-    const refNew = refCurrent + REFERRAL_BONUS_DAYS * 86400000;
-    saveUser(referrerId, {
-      subscriptionUntil: refNew,
-      paidCount: (refUser.paidCount || 0) + 1,
-    });
-
-    bot.telegram.sendMessage(
-      referrerId,
-      `🎉 Твой промокод использовали! Тебе начислено +${REFERRAL_BONUS_DAYS} дней.`
-    );
-  }
-
-  const untilDate = formatDate(newUntil);
-
-  bot.telegram.sendMessage(
-    userId,
-    `✅ Оплата получена!\n\n` +
-    `Подписка активна до: ${untilDate}\n` +
-    `Твой ключ:\n\`${key}\``,
-    { parse_mode: "Markdown" }
-  );
-
+  await payments.handleWebhook(bot, req.body);
   res.send("OK");
-});
-
-
-
-// ===============================
-// PHOTO BROADCAST (рассылка фото)
-// ===============================
-bot.on("photo", async (ctx) => {
-  // Проверяем, что это админ
-  if (ctx.from.id !== ADMIN_ID) return;
-
-  const caption = ctx.message.caption || "";
-  if (!caption.startsWith("/photocast")) return;
-
-  const text = caption.replace("/photocast", "").trim();
-  const photoId = ctx.message.photo[ctx.message.photo.length - 1].file_id;
-
-  await ctx.reply("Начинаю рассылку фото...");
-
-  let success = 0;
-  let failed = 0;
-
-  for (const [userId] of users.entries()) {
-    try {
-      await bot.telegram.sendPhoto(userId, photoId, {
-        caption: text,
-      });
-      success++;
-    } catch (e) {
-      failed++;
-    }
-  }
-
-  ctx.reply(`Рассылка завершена.\nУспешно: ${success}\nОшибок: ${failed}`);
-});
-bot.command("addpromoAstraGuardVPN_bot", (ctx) => {
-  if (ctx.from.id !== ADMIN_ID) return;
-
-  const args = ctx.message.text.split(" ");
-
-  if (args.length < 4) {
-    return ctx.reply(
-      "Использование:\n/addpromoAstraGuardVPN_bot КОД СКИДКА ИСПОЛЬЗОВАНИЙ\n\nПример:\n/addpromoAstraGuardVPN_bot TGK10 10 50"
-    );
-  }
-
-  const code = args[1].toUpperCase();
-  const discount = parseInt(args[2]);
-  const uses = parseInt(args[3]);
-
-  if (isNaN(discount) || isNaN(uses)) {
-    return ctx.reply("Ошибка: скидка и количество использований должны быть числами.");
-  }
-
-  PROMOCODES.push({
-    code,
-    discount,
-    usesLeft: uses,
-  });
-
-  ctx.reply(
-    `🎉 Промокод создан!\n\n` +
-    `Код: ${code}\n` +
-    `Скидка: ${discount}%\n` +
-    `Использований: ${uses}`
-  );
-});
-
-// ===============================
-// BROADCAST (рассылка)
-// ===============================
-bot.command("broadcast", async (ctx) => {
-  if (ctx.from.id !== ADMIN_ID) return;
-
-  const text = ctx.message.text.replace("/broadcast", "").trim();
-  if (!text) return ctx.reply("Напиши текст рассылки после команды.");
-
-  ctx.reply("Начинаю рассылку...");
-
-  let success = 0;
-  let failed = 0;
-
-  for (const [userId] of users.entries()) {
-    try {
-      await bot.telegram.sendMessage(userId, text);
-      success++;
-    } catch (e) {
-      failed++;
-    }
-  }
-
-  ctx.reply(`Рассылка завершена.\nУспешно: ${success}\nОшибок: ${failed}`);
-});
-
-bot.command("sendto", async (ctx) => {
-  if (ctx.from.id !== ADMIN_ID) return;
-
-  const args = ctx.message.text.split(" ");
-  if (args.length < 3) {
-    return ctx.reply("Использование: /sendto USER_ID текст");
-  }
-
-  const userId = args[1];
-  const text = args.slice(2).join(" ");
-
-  try {
-    await bot.telegram.sendMessage(userId, text);
-    ctx.reply("Отправлено.");
-  } catch (e) {
-    ctx.reply("Ошибка: пользователь недоступен.");
-  }
-});
-
-// Ответ техподдержки
-bot.command("reply", async (ctx) => {
-  if (ctx.from.id !== ADMIN_ID) return;
-
-  const args = ctx.message.text.split(" ");
-  if (args.length < 3) {
-    return ctx.reply("Использование: /reply USER_ID текст ответа");
-  }
-
-  const userId = args[1];
-  const text = args.slice(2).join(" ");
-
-  try {
-    await bot.telegram.sendMessage(
-      userId,
-      `📩 *Ответ от техподдержки:*\n\n${text}`,
-      { parse_mode: "Markdown" }
-    );
-    ctx.reply("Ответ отправлен пользователю.");
-  } catch (e) {
-    ctx.reply("Ошибка: пользователь недоступен.");
-  }
 });
 
 // ===============================
 // START
 // ===============================
 bot.launch();
-app.listen(3000, () => console.log("Webhook server on 3000"));
-console.log("Bot started");
+app.listen(3000, () => console.log("Server running on 3000"));
+console.log("AstraGuardVPN bot started");
