@@ -273,10 +273,17 @@ bot.on("text", async (ctx, next) => {
 
   // Промокод
   // Промокод или реферальный код
+  // Промокод или реферальный код
   if (!state || state.step !== "promo") return next();
 
   const text = ctx.message.text.trim().toUpperCase();
   let referrerId = null;
+
+  const tariff = TARIFFS.find((t) => t.id === state.tariffId);
+  if (!tariff) return ctx.reply("Ошибка: тариф не найден.");
+
+  // Локальная цена (НЕ меняем глобальный тариф)
+  let finalPrice = tariff.price;
 
   // 1) Проверяем промокоды
   const promo = PROMOCODES.find(p => p.code === text);
@@ -288,18 +295,15 @@ bot.on("text", async (ctx, next) => {
 
     promo.usesLeft--;
 
-    const tariff = TARIFFS.find((t) => t.id === state.tariffId);
-    const newPrice = Math.round(tariff.price * (1 - promo.discount / 100));
-    tariff.price = newPrice;
+    finalPrice = Math.round(finalPrice * (1 - promo.discount / 100));
 
     ctx.reply(
       `🎉 Промокод применён!\n` +
       `Скидка: ${promo.discount}%\n` +
-      `Новая цена: ${newPrice}₽`
+      `Новая цена: ${finalPrice}₽`
     );
 
-    // Промокод ≠ рефералка
-    referrerId = null;
+    referrerId = null; // промокод ≠ рефералка
   } else if (text !== "НЕТ") {
     // 2) Проверяем реферальный код
     const refUser = findUserByReferralCode(text);
@@ -309,6 +313,7 @@ bot.on("text", async (ctx, next) => {
 
     referrerId = refUser.id;
   }
+
 
 
   const tariff = TARIFFS.find((t) => t.id === state.tariffId);
@@ -336,7 +341,7 @@ bot.on("text", async (ctx, next) => {
       KASSA_CREATE_URL,
       {
         shop_id: KASSA_SHOP_ID,
-        amount: tariff.price,
+        amount: finalPrice,
         order_id: orderId,
         description: `Подписка ${tariff.title}`,
         callback_url: WEBHOOK_URL,
