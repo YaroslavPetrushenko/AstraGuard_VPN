@@ -100,8 +100,8 @@ bot.start((ctx) => {
   const user = getUser(ctx.from.id);
   ctx.reply(
     `Привет, ${ctx.from.first_name}!\n\n` +
-      `Твой реферальный код: ${user.referralCode}\n\n` +
-      `Выбери действие в меню ниже.`,
+    `Твой реферальный код: ${user.referralCode}\n\n` +
+    `Выбери действие в меню ниже.`,
     mainMenu()
   );
 });
@@ -121,8 +121,8 @@ bot.hears("🚀 Мой VPN", (ctx) => {
 
   ctx.reply(
     `📦 *Мой VPN*\n\n` +
-      `Статус подписки: ${until}\n\n` +
-      `${keyText}`,
+    `Статус подписки: ${until}\n\n` +
+    `${keyText}`,
     { parse_mode: "Markdown", ...mainMenu() }
   );
 });
@@ -153,8 +153,8 @@ bot.hears("🆓 Пробный доступ", (ctx) => {
 
   ctx.reply(
     `🆓 Пробный доступ активирован на ${TRIAL_DAYS} день.\n\n` +
-      `Подписка активна до: ${formatDate(trialUntil)}\n` +
-      `Твой ключ:\n\`${key}\``,
+    `Подписка активна до: ${formatDate(trialUntil)}\n` +
+    `Твой ключ:\n\`${key}\``,
     { parse_mode: "Markdown", ...mainMenu() }
   );
 });
@@ -167,10 +167,10 @@ bot.hears("👥 Реферальная программа", (ctx) => {
 
   ctx.reply(
     `👥 *Реферальная программа*\n\n` +
-      `Твой реферальный код:\n\`${user.referralCode}\`\n\n` +
-      `Приглашено всего: ${user.invitedCount}\n` +
-      `Из них оплатили: ${user.paidCount}\n\n` +
-      `Делись кодом с друзьями — за каждую оплату по твоему коду ты получаешь +${REFERRAL_BONUS_DAYS} дней к подписке.`,
+    `Твой реферальный код:\n\`${user.referralCode}\`\n\n` +
+    `Приглашено всего: ${user.invitedCount}\n` +
+    `Из них оплатили: ${user.paidCount}\n\n` +
+    `Делись кодом с друзьями — за каждую оплату по твоему коду ты получаешь +${REFERRAL_BONUS_DAYS} дней к подписке.`,
     { parse_mode: "Markdown", ...mainMenu() }
   );
 });
@@ -181,10 +181,10 @@ bot.hears("👥 Реферальная программа", (ctx) => {
 bot.hears("📱 Как подключиться?", (ctx) => {
   ctx.reply(
     "📱 *Как подключиться к VPN*\n\n" +
-      "1. Установи приложение VPN (WireGuard / OpenVPN / другое — как у тебя реально).\n" +
-      "2. Вставь выданный ключ или импортируй конфиг.\n" +
-      "3. Нажми «Подключиться».\n\n" +
-      "Если что-то не получается — напиши в поддержку.",
+    "1. Установи приложение VPN (WireGuard / OpenVPN / другое — как у тебя реально).\n" +
+    "2. Вставь выданный ключ или импортируй конфиг.\n" +
+    "3. Нажми «Подключиться».\n\n" +
+    "Если что-то не получается — напиши в поддержку.",
     { parse_mode: "Markdown", ...mainMenu() }
   );
 });
@@ -195,11 +195,11 @@ bot.hears("📱 Как подключиться?", (ctx) => {
 bot.hears("ℹ️ О сервисе", (ctx) => {
   ctx.reply(
     "ℹ️ *О сервисе AstraGuardVPN*\n\n" +
-      "• Высокая скорость и стабильные сервера.\n" +
-      "• Защита трафика и конфиденциальность.\n" +
-      "• Удобная оплата и автоматическая выдача ключей.\n" +
-      "• Реферальная программа с бонусными днями.\n\n" +
-      "Сервис создан для комфортного и безопасного доступа к сети.",
+    "• Высокая скорость и стабильные сервера.\n" +
+    "• Защита трафика и конфиденциальность.\n" +
+    "• Удобная оплата и автоматическая выдача ключей.\n" +
+    "• Реферальная программа с бонусными днями.\n\n" +
+    "Сервис создан для комфортного и безопасного доступа к сети.",
     { parse_mode: "Markdown", ...mainMenu() }
   );
 });
@@ -238,7 +238,7 @@ bot.action(/tariff_(.+)/, async (ctx) => {
   await ctx.answerCbQuery();
   await ctx.reply(
     `Ты выбрал: ${tariff.title} за ${tariff.price}₽.\n\n` +
-      `Если есть промокод — отправь его.\nЕсли нет — напиши: "нет".`
+    `Если есть промокод — отправь его.\nЕсли нет — напиши: "нет".`
   );
 });
 
@@ -260,9 +260,9 @@ bot.on("text", async (ctx, next) => {
     await bot.telegram.sendMessage(
       ADMIN_ID,
       `🆘 *Новый вопрос в поддержку*\n\n` +
-        `От: ${ctx.from.first_name} (@${ctx.from.username || "нет"})\n` +
-        `ID: ${ctx.from.id}\n\n` +
-        `Вопрос:\n${question}`,
+      `От: ${ctx.from.first_name} (@${ctx.from.username || "нет"})\n` +
+      `ID: ${ctx.from.id}\n\n` +
+      `Вопрос:\n${question}`,
       { parse_mode: "Markdown" }
     );
 
@@ -327,7 +327,7 @@ bot.on("text", async (ctx, next) => {
 
     ctx.reply(
       `Отлично!\nОплати по ссылке:\n${payUrl}\n\n` +
-        `После оплаты подписка активируется автоматически.`,
+      `После оплаты подписка активируется автоматически.`,
       mainMenu()
     );
   } catch (err) {
@@ -400,12 +400,43 @@ app.post("/kassa/webhook", async (req, res) => {
   bot.telegram.sendMessage(
     userId,
     `✅ Оплата получена!\n\n` +
-      `Подписка активна до: ${untilDate}\n` +
-      `Твой ключ:\n\`${key}\``,
+    `Подписка активна до: ${untilDate}\n` +
+    `Твой ключ:\n\`${key}\``,
     { parse_mode: "Markdown" }
   );
 
   res.send("OK");
+});
+// ===============================
+// PHOTO BROADCAST (рассылка фото)
+// ===============================
+bot.on("photo", async (ctx) => {
+  // Проверяем, что это админ
+  if (ctx.from.id !== ADMIN_ID) return;
+
+  const caption = ctx.message.caption || "";
+  if (!caption.startsWith("/photocast")) return;
+
+  const text = caption.replace("/photocast", "").trim();
+  const photoId = ctx.message.photo[ctx.message.photo.length - 1].file_id;
+
+  await ctx.reply("Начинаю рассылку фото...");
+
+  let success = 0;
+  let failed = 0;
+
+  for (const [userId] of users.entries()) {
+    try {
+      await bot.telegram.sendPhoto(userId, photoId, {
+        caption: text,
+      });
+      success++;
+    } catch (e) {
+      failed++;
+    }
+  }
+
+  ctx.reply(`Рассылка завершена.\nУспешно: ${success}\nОшибок: ${failed}`);
 });
 
 // ===============================
