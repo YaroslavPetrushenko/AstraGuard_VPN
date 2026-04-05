@@ -9,6 +9,7 @@ const WEBHOOK_URL = "https://ТВОЙ_ДОМЕН/kassa/webhook";
 
 const REFERRAL_BONUS_DAYS = 5;
 const TRIAL_DAYS = 1;
+const PROMOCODES = [];
 
 // Тарифы
 const TARIFFS = [
@@ -437,6 +438,38 @@ bot.on("photo", async (ctx) => {
   }
 
   ctx.reply(`Рассылка завершена.\nУспешно: ${success}\nОшибок: ${failed}`);
+});
+bot.command("addpromoAstraGuardVPN_bot", (ctx) => {
+  if (ctx.from.id !== ADMIN_ID) return;
+
+  const args = ctx.message.text.split(" ");
+
+  if (args.length < 4) {
+    return ctx.reply(
+      "Использование:\n/addpromoAstraGuardVPN_bot КОД СКИДКА ИСПОЛЬЗОВАНИЙ\n\nПример:\n/addpromoAstraGuardVPN_bot TGK10 10 50"
+    );
+  }
+
+  const code = args[1].toUpperCase();
+  const discount = parseInt(args[2]);
+  const uses = parseInt(args[3]);
+
+  if (isNaN(discount) || isNaN(uses)) {
+    return ctx.reply("Ошибка: скидка и количество использований должны быть числами.");
+  }
+
+  PROMOCODES.push({
+    code,
+    discount,
+    usesLeft: uses,
+  });
+
+  ctx.reply(
+    `🎉 Промокод создан!\n\n` +
+    `Код: ${code}\n` +
+    `Скидка: ${discount}%\n` +
+    `Использований: ${uses}`
+  );
 });
 
 // ===============================
