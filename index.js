@@ -214,8 +214,6 @@ registerBroadcast(bot);
 // ===============================
 // ФОТО‑РАССЫЛКА
 // ===============================
-photoBroadcast = require("./broadcastPhoto");
-if (photoBroadcast) photoBroadcast(bot);
 
 // ===============================
 // EXPRESS + WEBHOOK
