@@ -20,7 +20,7 @@ const TARIFFS = [
 ];
 
 // Твой Telegram ID (админ)
-const ADMIN_ID = 123456789; // <-- ВСТАВЬ СВОЙ ID
+const ADMIN_ID = 6784875182; // <-- ВСТАВЬ СВОЙ ID
 
 // ===============================
 // DEPENDENCIES
