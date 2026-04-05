@@ -8,6 +8,7 @@ const KASSA_CREATE_URL = "https://paymentt.kassa.ai/api/v1/invoice";
 const WEBHOOK_URL = "https://ТВОЙ_ДОМЕН/kassa/webhook";
 
 const REFERRAL_BONUS_DAYS = 5;
+const TRIAL_DAYS = 1;
 
 // Тарифы
 const TARIFFS = [
@@ -42,6 +43,10 @@ function getUser(id) {
       subscriptionUntil: null,
       referralCode: `AG-${id}`,
       referredBy: null,
+      invitedCount: 0,
+      paidCount: 0,
+      trialUsed: false,
+      lastKey: null,
     });
   }
   return users.get(id);
@@ -66,6 +71,11 @@ function generateKey() {
   return "KEY-" + Math.random().toString(36).substring(2, 10).toUpperCase();
 }
 
+function formatDate(ts) {
+  if (!ts) return "нет";
+  return new Date(ts).toLocaleString("ru-RU");
+}
+
 // ===============================
 // TELEGRAM BOT
 // ===============================
@@ -77,16 +87,137 @@ bot.on("message", (ctx, next) => {
   return next();
 });
 
+function mainMenu() {
+  return Markup.keyboard([
+    ["🚀 Мой VPN", "💳 Купить подписку"],
+    ["🆓 Пробный доступ", "👥 Реферальная программа"],
+    ["📱 Как подключиться?", "ℹ️ О сервисе"],
+    ["💬 Поддержка"],
+  ]).resize();
+}
+
 bot.start((ctx) => {
   const user = getUser(ctx.from.id);
   ctx.reply(
     `Привет, ${ctx.from.first_name}!\n\n` +
       `Твой реферальный код: ${user.referralCode}\n\n` +
-      `Нажми кнопку ниже, чтобы купить подписку.`,
-    Markup.keyboard([["💳 Купить подписку", "🆘 Поддержка"]]).resize()
+      `Выбери действие в меню ниже.`,
+    mainMenu()
   );
 });
 
+// ===============================
+// МЕНЮ: МОЙ VPN
+// ===============================
+bot.hears("🚀 Мой VPN", (ctx) => {
+  const user = getUser(ctx.from.id);
+  const until = user.subscriptionUntil
+    ? formatDate(user.subscriptionUntil)
+    : "подписка не активна";
+
+  const keyText = user.lastKey
+    ? `Твой последний ключ:\n\`${user.lastKey}\``
+    : "Ключ ещё не выдавался.";
+
+  ctx.reply(
+    `📦 *Мой VPN*\n\n` +
+      `Статус подписки: ${until}\n\n` +
+      `${keyText}`,
+    { parse_mode: "Markdown", ...mainMenu() }
+  );
+});
+
+// ===============================
+// МЕНЮ: ПРОБНЫЙ ДОСТУП
+// ===============================
+bot.hears("🆓 Пробный доступ", (ctx) => {
+  const userId = ctx.from.id;
+  const user = getUser(userId);
+
+  if (user.trialUsed) {
+    return ctx.reply(
+      "Пробный доступ уже был активирован ранее.",
+      mainMenu()
+    );
+  }
+
+  const now = Date.now();
+  const trialUntil = now + TRIAL_DAYS * 86400000;
+  const key = generateKey();
+
+  saveUser(userId, {
+    trialUsed: true,
+    subscriptionUntil: trialUntil,
+    lastKey: key,
+  });
+
+  ctx.reply(
+    `🆓 Пробный доступ активирован на ${TRIAL_DAYS} день.\n\n` +
+      `Подписка активна до: ${formatDate(trialUntil)}\n` +
+      `Твой ключ:\n\`${key}\``,
+    { parse_mode: "Markdown", ...mainMenu() }
+  );
+});
+
+// ===============================
+// МЕНЮ: РЕФЕРАЛЬНАЯ ПРОГРАММА
+// ===============================
+bot.hears("👥 Реферальная программа", (ctx) => {
+  const user = getUser(ctx.from.id);
+
+  ctx.reply(
+    `👥 *Реферальная программа*\n\n` +
+      `Твой реферальный код:\n\`${user.referralCode}\`\n\n` +
+      `Приглашено всего: ${user.invitedCount}\n` +
+      `Из них оплатили: ${user.paidCount}\n\n` +
+      `Делись кодом с друзьями — за каждую оплату по твоему коду ты получаешь +${REFERRAL_BONUS_DAYS} дней к подписке.`,
+    { parse_mode: "Markdown", ...mainMenu() }
+  );
+});
+
+// ===============================
+// МЕНЮ: КАК ПОДКЛЮЧИТЬСЯ
+// ===============================
+bot.hears("📱 Как подключиться?", (ctx) => {
+  ctx.reply(
+    "📱 *Как подключиться к VPN*\n\n" +
+      "1. Установи приложение VPN (WireGuard / OpenVPN / другое — как у тебя реально).\n" +
+      "2. Вставь выданный ключ или импортируй конфиг.\n" +
+      "3. Нажми «Подключиться».\n\n" +
+      "Если что-то не получается — напиши в поддержку.",
+    { parse_mode: "Markdown", ...mainMenu() }
+  );
+});
+
+// ===============================
+// МЕНЮ: О СЕРВИСЕ
+// ===============================
+bot.hears("ℹ️ О сервисе", (ctx) => {
+  ctx.reply(
+    "ℹ️ *О сервисе AstraGuardVPN*\n\n" +
+      "• Высокая скорость и стабильные сервера.\n" +
+      "• Защита трафика и конфиденциальность.\n" +
+      "• Удобная оплата и автоматическая выдача ключей.\n" +
+      "• Реферальная программа с бонусными днями.\n\n" +
+      "Сервис создан для комфортного и безопасного доступа к сети.",
+    { parse_mode: "Markdown", ...mainMenu() }
+  );
+});
+
+// ===============================
+// МЕНЮ: ПОДДЕРЖКА
+// ===============================
+bot.hears("💬 Поддержка", (ctx) => {
+  ctx.reply(
+    "Напишите ваш вопрос одним сообщением. Техподдержка ответит вам в ближайшее время.",
+    mainMenu()
+  );
+  userState.set(ctx.from.id, { step: "support_waiting" });
+});
+
+// ===============================
+// МЕНЮ: КУПИТЬ ПОДПИСКУ
+// ===============================
 bot.hears("💳 Купить подписку", (ctx) => {
   const buttons = TARIFFS.map((t) => [
     Markup.button.callback(`${t.title} — ${t.price}₽`, `tariff_${t.id}`),
@@ -94,14 +225,9 @@ bot.hears("💳 Купить подписку", (ctx) => {
   ctx.reply("Выбери тариф:", Markup.inlineKeyboard(buttons));
 });
 
-// Кнопка поддержки
-bot.hears("🆘 Поддержка", (ctx) => {
-  ctx.reply(
-    "Напишите ваш вопрос одним сообщением. Техподдержка ответит вам в ближайшее время."
-  );
-  userState.set(ctx.from.id, { step: "support_waiting" });
-});
-
+// ===============================
+// ВЫБОР ТАРИФА
+// ===============================
 bot.action(/tariff_(.+)/, async (ctx) => {
   const tariffId = ctx.match[1];
   const tariff = TARIFFS.find((t) => t.id === tariffId);
@@ -116,7 +242,9 @@ bot.action(/tariff_(.+)/, async (ctx) => {
   );
 });
 
-// Обработка текстов: промокод ИЛИ поддержка
+// ===============================
+// ОБРАБОТКА ТЕКСТОВ: ПОДДЕРЖКА / ПРОМОКОД
+// ===============================
 bot.on("text", async (ctx, next) => {
   const state = userState.get(ctx.from.id);
 
@@ -124,7 +252,10 @@ bot.on("text", async (ctx, next) => {
   if (state && state.step === "support_waiting") {
     const question = ctx.message.text;
 
-    await ctx.reply("Ваш вопрос отправлен. Ожидайте ответа от техподдержки.");
+    await ctx.reply(
+      "Ваш вопрос отправлен. Ожидайте ответа от техподдержки.",
+      mainMenu()
+    );
 
     await bot.telegram.sendMessage(
       ADMIN_ID,
@@ -165,6 +296,14 @@ bot.on("text", async (ctx, next) => {
     status: "pending",
   });
 
+  // если есть реферер — увеличим invitedCount (приглашён)
+  if (referrerId) {
+    const refUser = getUser(referrerId);
+    saveUser(referrerId, {
+      invitedCount: (refUser.invitedCount || 0) + 1,
+    });
+  }
+
   try {
     const res = await axios.post(
       KASSA_CREATE_URL,
@@ -188,11 +327,12 @@ bot.on("text", async (ctx, next) => {
 
     ctx.reply(
       `Отлично!\nОплати по ссылке:\n${payUrl}\n\n` +
-        `После оплаты подписка активируется автоматически.`
+        `После оплаты подписка активируется автоматически.`,
+      mainMenu()
     );
   } catch (err) {
     console.log(err.response?.data || err);
-    ctx.reply("Ошибка при создании платежа.");
+    ctx.reply("Ошибка при создании платежа.", mainMenu());
   }
 });
 
@@ -230,15 +370,24 @@ app.post("/kassa/webhook", async (req, res) => {
     tariff.days * 86400000 +
     (referrerId ? REFERRAL_BONUS_DAYS * 86400000 : 0);
 
-  saveUser(userId, { subscriptionUntil: newUntil });
+  const key = generateKey();
 
+  saveUser(userId, {
+    subscriptionUntil: newUntil,
+    lastKey: key,
+  });
+
+  // рефереру — бонусные дни + paidCount++
   if (referrerId) {
     const refUser = getUser(referrerId);
     const refNow = Date.now();
     const refCurrent =
       refUser.subscriptionUntil > refNow ? refUser.subscriptionUntil : refNow;
     const refNew = refCurrent + REFERRAL_BONUS_DAYS * 86400000;
-    saveUser(referrerId, { subscriptionUntil: refNew });
+    saveUser(referrerId, {
+      subscriptionUntil: refNew,
+      paidCount: (refUser.paidCount || 0) + 1,
+    });
 
     bot.telegram.sendMessage(
       referrerId,
@@ -246,8 +395,7 @@ app.post("/kassa/webhook", async (req, res) => {
     );
   }
 
-  const key = generateKey();
-  const untilDate = new Date(newUntil).toLocaleString("ru-RU");
+  const untilDate = formatDate(newUntil);
 
   bot.telegram.sendMessage(
     userId,
