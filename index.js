@@ -1,7 +1,7 @@
 // ===============================
 // CONFIG
 // ===============================
-const TELEGRAM_BOT_TOKEN = "ТОКЕН_БОТА";
+const TELEGRAM_BOT_TOKEN = "8524463400:AAHXm2_YpkdXg8lY9aa8fZ_5ZTWwyUiB9HE";
 const KASSA_API_KEY = "API_KEY_KASSA_AI";
 const KASSA_SHOP_ID = "SHOP_ID_KASSA_AI";
 const KASSA_CREATE_URL = "https://paymentt.kassa.ai/api/v1/invoice";
