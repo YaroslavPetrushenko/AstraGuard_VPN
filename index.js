@@ -20,7 +20,7 @@ const registerBroadcast = require("./broadcast");
 const bot = new Telegraf(TELEGRAM_BOT_TOKEN);
 
 // если хочешь добавить подругу — просто добавь её ID сюда
-const ADMINS = [ADMIN_ID]; 
+const ADMINS = [ADMIN_ID];
 // пример: const ADMINS = [6784875182, 1234567890];
 
 const promoState = new Map();
@@ -151,6 +151,13 @@ bot.action(/tariff_(.+)/, (ctx) => {
 
   ctx.answerCbQuery();
   ctx.reply("Введите промокод или реферальный код.\nЕсли нет — напишите: нет");
+});
+// ===============================
+// ТЕХПОДДЕРЖКА — ОБРАБОТЧИК КНОПКИ
+// ===============================
+bot.hears("💬 Поддержка", (ctx) => {
+  supportState.set(ctx.from.id, true);
+  ctx.reply("Напишите ваш вопрос одним сообщением. Техподдержка ответит вам в ближайшее время.");
 });
 
 // ===============================
