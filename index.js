@@ -35,10 +35,13 @@ function formatDate(ts) {
 }
 
 // авто-создание пользователя
-bot.on("message", async (ctx, next) => {
-  await getUser(ctx.from.id);
-  next();
+// промокод / рефералка
+bot.use(async (ctx, next) => {
+  if (ctx.from) await getUser(ctx.from.id);
+  return next();
 });
+
+
 
 // старт
 bot.start(async (ctx) => {
@@ -84,8 +87,8 @@ bot.hears("🆓 Пробный доступ", async (ctx) => {
 
   ctx.reply(
     `🆓 Пробный доступ активирован!\n\n` +
-      `Подписка активна до: ${formatDate(expiresAt)}\n` +
-      `Твой ключ:\n\`${key}\``,
+    `Подписка активна до: ${formatDate(expiresAt)}\n` +
+    `Твой ключ:\n\`${key}\``,
     { parse_mode: "Markdown", ...mainMenu() }
   );
 });
@@ -96,10 +99,10 @@ bot.hears("👥 Реферальная программа", async (ctx) => {
 
   ctx.reply(
     `👥 *Реферальная программа*\n\n` +
-      `Твой реферальный код:\n\`${user.referralCode}\`\n\n` +
-      `Приглашено: ${user.invitedCount}\n` +
-      `Оплатили: ${user.paidCount}\n\n` +
-      `За каждую оплату — +${REFERRAL_BONУС_DAYS} дней.`,
+    `Твой реферальный код:\n\`${user.referralCode}\`\n\n` +
+    `Приглашено: ${user.invitedCount}\n` +
+    `Оплатили: ${user.paidCount}\n\n` +
+    `За каждую оплату — +${REFERRAL_BONУС_DAYS} дней.`,
     { parse_mode: "Markdown", ...mainMenu() }
   );
 });
@@ -108,9 +111,9 @@ bot.hears("👥 Реферальная программа", async (ctx) => {
 bot.hears("📱 Как подключиться?", (ctx) => {
   ctx.reply(
     "📱 *Как подключиться к VPN*\n\n" +
-      "1. Установи приложение VPN.\n" +
-      "2. Вставь ключ.\n" +
-      "3. Подключись.",
+    "1. Установи приложение VPN.\n" +
+    "2. Вставь ключ.\n" +
+    "3. Подключись.",
     { parse_mode: "Markdown", ...mainMenu() }
   );
 });
@@ -119,10 +122,10 @@ bot.hears("📱 Как подключиться?", (ctx) => {
 bot.hears("ℹ️ О сервисе", (ctx) => {
   ctx.reply(
     "ℹ️ *AstraGuardVPN*\n\n" +
-      "• Быстрые сервера\n" +
-      "• Защита трафика\n" +
-      "• Автоматическая выдача ключей\n" +
-      "• Реферальная программа",
+    "• Быстрые сервера\n" +
+    "• Защита трафика\n" +
+    "• Автоматическая выдача ключей\n" +
+    "• Реферальная программа",
     { parse_mode: "Markdown", ...mainMenu() }
   );
 });
