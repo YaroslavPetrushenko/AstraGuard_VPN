@@ -152,34 +152,59 @@ bot.on("text", (ctx, next) => {
   const tariffId = promoState.get(ctx.from.id);
   if (!tariffId) return next();
 
+  const text = ctx.message.text.trim();
+
+  // если человек передумал и нажал кнопку — не трогаем, пропускаем дальше
+  const buttons = [
+    "🚀 Мой VPN",
+    "💳 Купить подписку",
+    "🆓 Пробный доступ",
+    "👥 Реферальная программа",
+    "📱 Как подключиться?",
+    "ℹ️ О сервисе",
+    "💬 Поддержка",
+  ];
+  if (buttons.includes(text)) return next();
+
   const tariff = TARIFFS.find((t) => t.id === tariffId);
-  const text = ctx.message.text.trim().toUpperCase();
+  if (!tariff) {
+    promoState.delete(ctx.from.id);
+    return ctx.reply("Ошибка: тариф не найден.");
+  }
+
+  const upper = text.toUpperCase();
 
   let referrerId = null;
   let finalPrice = tariff.price;
 
-  const promo = PROMOCODES.find((p) => p.code === text);
+  const promo = PROMOCODES.find((p) => p.code === upper);
 
   if (promo) {
     if (promo.usesLeft <= 0) return ctx.reply("Промокод больше не действует.");
     promo.usesLeft--;
     finalPrice = Math.round(finalPrice * (1 - promo.discount / 100));
     ctx.reply(`🎉 Промокод применён! Цена: ${finalPrice}₽`);
-  } else if (text !== "НЕТ") {
-    const refUser = findUserByReferralCode(text);
+  } else if (upper !== "НЕТ") {
+    const refUser = findUserByReferralCode(upper);
     if (!refUser) return ctx.reply("Код не найден.");
-    if (refUser.userId === ctx.from.id) return ctx.reply("Нельзя использовать свой код.");
-    referrerId = refUser.userId;
+
+    // ВАЖНО: тут почти наверняка id, а не userId
+    const refId = refUser.userId || refUser.id;
+    if (String(refId) === String(ctx.from.id))
+      return ctx.reply("Нельзя использовать свой код.");
+
+    referrerId = refId;
 
     updateUser(referrerId, {
-      invitedCount: refUser.invitedCount + 1,
+      invitedCount: (refUser.invitedCount || 0) + 1,
     });
   }
 
   promoState.delete(ctx.from.id);
 
-  createPayment(ctx, tariff, referrerId, finalPrice, text);
+  createPayment(ctx, tariff, referrerId, finalPrice, upper);
 });
+
 
 // поддержка / админ / рассылки
 registerSupport(bot);

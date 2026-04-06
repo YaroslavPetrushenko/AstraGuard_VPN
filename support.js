@@ -1,41 +1,36 @@
 const { ADMIN_ID } = require("./config");
 
 module.exports = function registerSupport(bot) {
-  const supportState = new Map(); // локальное хранилище режима поддержки
+  const supportState = new Map();
 
   // Кнопка "Поддержка"
   bot.hears("💬 Поддержка", (ctx) => {
     supportState.set(ctx.from.id, true);
-
-    ctx.reply(
-      "Напишите ваш вопрос одним сообщением. Техподдержка ответит вам в ближайшее время."
-    );
+    ctx.reply("Напишите ваш вопрос одним сообщением. Техподдержка ответит вам в ближайшее время.");
   });
 
-  // Перехват сообщений пользователя → отправка админу
+  // Перехват текста для поддержки
   bot.on("text", async (ctx, next) => {
     const text = ctx.message.text;
 
     // системные кнопки — пропускаем
-    const skip = [
+    const buttons = [
       "🚀 Мой VPN",
       "💳 Купить подписку",
       "🆓 Пробный доступ",
       "👥 Реферальная программа",
       "📱 Как подключиться?",
       "ℹ️ О сервисе",
-      "💬 Поддержка"
+      "💬 Поддержка",
     ];
-
-    if (skip.includes(text)) return next();
+    if (buttons.includes(text)) return next();
 
     // если это админ — пропускаем
     if (ctx.from.id === ADMIN_ID) return next();
 
-    // если пользователь НЕ в режиме поддержки — пропускаем
+    // если пользователь не в режиме поддержки — пропускаем
     if (!supportState.get(ctx.from.id)) return next();
 
-    // отправляем админу
     await ctx.telegram.sendMessage(
       ADMIN_ID,
       `🆘 *Новый вопрос в поддержку*\n\n` +
@@ -50,7 +45,7 @@ module.exports = function registerSupport(bot) {
     supportState.delete(ctx.from.id);
   });
 
-  // Ответ админа пользователю
+  // Ответ админа
   bot.command("reply", async (ctx) => {
     if (ctx.from.id !== ADMIN_ID) return;
 
