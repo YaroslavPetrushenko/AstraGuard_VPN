@@ -1,4 +1,5 @@
 const { ADMIN_ID, PROMOCODES } = require("./config");
+const { getAllUsers } = require("./users");
 
 module.exports = function registerAdminCommands(bot) {
 
@@ -36,6 +37,48 @@ module.exports = function registerAdminCommands(bot) {
     );
 
     ctx.reply("Ответ отправлен.");
+  });
+
+  // ===============================
+  // /stats — статистика
+  // ===============================
+  bot.command("stats", async (ctx) => {
+    if (ctx.from.id !== ADMIN_ID) return;
+
+    const users = await getAllUsers();
+
+    const total = users.length;
+    const active = users.filter(u => u.subscriptionUntil > Date.now()).length;
+    const trials = users.filter(u => u.trialUsed).length;
+    const referrals = users.reduce((sum, u) => sum + (u.paidCount || 0), 0);
+
+    ctx.reply(
+      `📊 *Статистика AstraGuardVPN*\n\n` +
+      `👥 Пользователей: *${total}*\n` +
+      `🔥 Активных подписок: *${active}*\n` +
+      `🆓 Использовано пробников: *${trials}*\n` +
+      `👥 Оплаченных рефералов: *${referrals}*`,
+      { parse_mode: "Markdown" }
+    );
+  });
+
+  // ===============================
+  // /promos — список всех промокодов
+  // ===============================
+  bot.command("promos", async (ctx) => {
+    if (ctx.from.id !== ADMIN_ID) return;
+
+    if (PROMOCODES.length === 0) {
+      return ctx.reply("Промокодов нет.");
+    }
+
+    let text = "🎟 *Список промокодов:*\n\n";
+
+    for (const p of PROMOCODES) {
+      text += `🔑 \`${p.code}\` — скидка *${p.discount}%*, осталось *${p.usesLeft}*\n`;
+    }
+
+    ctx.reply(text, { parse_mode: "Markdown" });
   });
 
   // ===============================
