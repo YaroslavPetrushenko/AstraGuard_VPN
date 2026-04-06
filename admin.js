@@ -1,4 +1,4 @@
-const { ADMIN_ID } = require("./config");
+const { ADMIN_ID, PROMOCODES } = require("./config");
 
 module.exports = function registerAdminCommands(bot) {
 
@@ -58,8 +58,6 @@ module.exports = function registerAdminCommands(bot) {
       return ctx.reply("Ошибка: скидка и количество должны быть числами.");
     }
 
-    const { PROMOCODES } = require("./config");
-
     PROMOCODES.push({
       code,
       discount,
@@ -72,6 +70,35 @@ module.exports = function registerAdminCommands(bot) {
       `💸 *Скидка:* ${discount}%\n` +
       `♻️ *Использований доступно:* ${uses}\n\n` +
       `Промокод активен.`,
+      { parse_mode: "Markdown" }
+    );
+  });
+
+  // ===============================
+  // /delpromoAstraGuardVPN_bot CODE
+  // ===============================
+  bot.command("delpromoAstraGuardVPN_bot", async (ctx) => {
+    if (ctx.from.id !== ADMIN_ID) return;
+
+    const args = ctx.message.text.split(" ");
+    if (args.length < 2) {
+      return ctx.reply("Использование:\n/delpromoAstraGuardVPN_bot CODE");
+    }
+
+    const code = args[1].toUpperCase();
+
+    const index = PROMOCODES.findIndex((p) => p.code === code);
+
+    if (index === -1) {
+      return ctx.reply(`❌ Промокод \`${code}\` не найден.`, { parse_mode: "Markdown" });
+    }
+
+    PROMOCODES.splice(index, 1);
+
+    ctx.reply(
+      `🗑 *Промокод удалён!*\n\n` +
+      `🔑 *Код:* \`${code}\`\n` +
+      `Промокод больше не доступен.`,
       { parse_mode: "Markdown" }
     );
   });
