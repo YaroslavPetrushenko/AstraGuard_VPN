@@ -199,6 +199,7 @@ app.post("/anypay/webhook", async (req, res) => {
   res.send("OK");
 });
 
+bot.telegram.deleteWebhook({ drop_pending_updates: true });
 bot.launch();
 app.listen(3000, () => console.log("Server running on 3000"));
 console.log("AstraGuardVPN bot started");
