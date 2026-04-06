@@ -1,10 +1,8 @@
-const connectDB = require("./db");
+const db = require("./db");
 
-async function getUser(userId) {
-  const db = await connectDB();
-  const users = db.collection("users");
-
-  let user = await users.findOne({ userId });
+function getUser(userId) {
+  const stmt = db.prepare("SELECT * FROM users WHERE userId = ?");
+  let user = stmt.get(userId);
 
   if (!user) {
     user = {
@@ -13,29 +11,36 @@ async function getUser(userId) {
       referredBy: null,
       invitedCount: 0,
       paidCount: 0,
-      trialUsed: false,
+      trialUsed: 0,
       subscriptionUntil: null,
       lastKey: null,
     };
-    await users.insertOne(user);
+
+    db.prepare(`
+      INSERT INTO users (userId, referralCode, referredBy, invitedCount, paidCount, trialUsed, subscriptionUntil, lastKey)
+      VALUES (@userId, @referralCode, @referredBy, @invitedCount, @paidCount, @trialUsed, @subscriptionUntil, @lastKey)
+    `).run(user);
   }
 
   return user;
 }
 
-async function updateUser(userId, data) {
-  const db = await connectDB();
-  await db.collection("users").updateOne({ userId }, { $set: data });
+function updateUser(userId, data) {
+  const keys = Object.keys(data);
+  const values = Object.values(data);
+
+  const set = keys.map(k => `${k} = ?`).join(", ");
+
+  db.prepare(`UPDATE users SET ${set} WHERE userId = ?`)
+    .run(...values, userId);
 }
 
-async function findUserByReferralCode(code) {
-  const db = await connectDB();
-  return await db.collection("users").findOne({ referralCode: code });
+function findUserByReferralCode(code) {
+  return db.prepare("SELECT * FROM users WHERE referralCode = ?").get(code);
 }
 
-async function getAllUsers() {
-  const db = await connectDB();
-  return await db.collection("users").find({}).toArray();
+function getAllUsers() {
+  return db.prepare("SELECT * FROM users").all();
 }
 
 module.exports = { getUser, updateUser, findUserByReferralCode, getAllUsers };

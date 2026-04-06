@@ -1,15 +1,47 @@
-const { MongoClient } = require("mongodb");
+const Database = require("better-sqlite3");
 
-const uri = "mongodb+srv://petyara11_db_user:VH05EGt8yuQYwFSC@astraguardvpn.j942emt.mongodb.net/?retryWrites=true&w=majority&tls=true";
+const db = new Database("data.db");
 
-const client = new MongoClient(uri);
+// USERS
+db.exec(`
+CREATE TABLE IF NOT EXISTS users (
+  userId TEXT PRIMARY KEY,
+  referralCode TEXT,
+  referredBy TEXT,
+  invitedCount INTEGER,
+  paidCount INTEGER,
+  trialUsed INTEGER,
+  subscriptionUntil INTEGER,
+  lastKey TEXT
+);
+`);
 
-async function connectDB() {
-  if (!client.topology || !client.topology.isConnected()) {
-    await client.connect();
-    console.log("MongoDB connected");
-  }
-  return client.db("AstraGuardVPN");
-}
+// KEYS
+db.exec(`
+CREATE TABLE IF NOT EXISTS keys (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  key TEXT UNIQUE,
+  userId TEXT,
+  type TEXT,
+  createdAt INTEGER,
+  expiresAt INTEGER,
+  status TEXT
+);
+`);
 
-module.exports = connectDB;
+// PAYMENTS
+db.exec(`
+CREATE TABLE IF NOT EXISTS payments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  orderId TEXT UNIQUE,
+  userId TEXT,
+  tariffId TEXT,
+  referrerId TEXT,
+  amount REAL,
+  promoOrRef TEXT,
+  status TEXT,
+  createdAt INTEGER
+);
+`);
+
+module.exports = db;

@@ -35,17 +35,14 @@ function formatDate(ts) {
 }
 
 // авто-создание пользователя
-// промокод / рефералка
-bot.use(async (ctx, next) => {
-  if (ctx.from) await getUser(ctx.from.id);
+bot.use((ctx, next) => {
+  if (ctx.from) getUser(ctx.from.id); // SQLite синхронный — await не нужен
   return next();
 });
 
-
-
 // старт
-bot.start(async (ctx) => {
-  const user = await getUser(ctx.from.id);
+bot.start((ctx) => {
+  const user = getUser(ctx.from.id);
   ctx.reply(
     `Привет, ${ctx.from.first_name}!\n\nТвой реферальный код: ${user.referralCode}`,
     mainMenu()
@@ -53,8 +50,8 @@ bot.start(async (ctx) => {
 });
 
 // мой vpn
-bot.hears("🚀 Мой VPN", async (ctx) => {
-  const user = await getUser(ctx.from.id);
+bot.hears("🚀 Мой VPN", (ctx) => {
+  const user = getUser(ctx.from.id);
 
   const until = user.subscriptionUntil
     ? formatDate(user.subscriptionUntil)
@@ -71,16 +68,16 @@ bot.hears("🚀 Мой VPN", async (ctx) => {
 });
 
 // пробный
-bot.hears("🆓 Пробный доступ", async (ctx) => {
-  const user = await getUser(ctx.from.id);
+bot.hears("🆓 Пробный доступ", (ctx) => {
+  const user = getUser(ctx.from.id);
 
   if (user.trialUsed)
     return ctx.reply("Пробный доступ уже был активирован ранее.", mainMenu());
 
-  const { key, expiresAt } = await createTrialKey(ctx.from.id, TRIAL_DAYS);
+  const { key, expiresAt } = createTrialKey(ctx.from.id, TRIAL_DAYS);
 
-  await updateUser(ctx.from.id, {
-    trialUsed: true,
+  updateUser(ctx.from.id, {
+    trialUsed: 1,
     subscriptionUntil: expiresAt,
     lastKey: key,
   });
@@ -94,8 +91,8 @@ bot.hears("🆓 Пробный доступ", async (ctx) => {
 });
 
 // рефералка
-bot.hears("👥 Реферальная программа", async (ctx) => {
-  const user = await getUser(ctx.from.id);
+bot.hears("👥 Реферальная программа", (ctx) => {
+  const user = getUser(ctx.from.id);
 
   ctx.reply(
     `👥 *Реферальная программа*\n\n` +
@@ -139,19 +136,19 @@ bot.hears("💳 Купить подписку", (ctx) => {
 });
 
 // выбор тарифа
-bot.action(/tariff_(.+)/, async (ctx) => {
+bot.action(/tariff_(.+)/, (ctx) => {
   const tariffId = ctx.match[1];
   const tariff = TARIFFS.find((t) => t.id === tariffId);
   if (!tariff) return ctx.answerCbQuery("Ошибка: тариф не найден");
 
   promoState.set(ctx.from.id, tariffId);
 
-  await ctx.answerCbQuery();
+  ctx.answerCbQuery();
   ctx.reply("Введите промокод или реферальный код.\nЕсли нет — напишите: нет");
 });
 
 // промокод / рефералка
-bot.on("text", async (ctx, next) => {
+bot.on("text", (ctx, next) => {
   const tariffId = promoState.get(ctx.from.id);
   if (!tariffId) return next();
 
@@ -169,20 +166,19 @@ bot.on("text", async (ctx, next) => {
     finalPrice = Math.round(finalPrice * (1 - promo.discount / 100));
     ctx.reply(`🎉 Промокод применён! Цена: ${finalPrice}₽`);
   } else if (text !== "НЕТ") {
-    const refUser = await findUserByReferralCode(text);
+    const refUser = findUserByReferralCode(text);
     if (!refUser) return ctx.reply("Код не найден.");
     if (refUser.userId === ctx.from.id) return ctx.reply("Нельзя использовать свой код.");
     referrerId = refUser.userId;
 
-    const u = await getUser(referrerId);
-    await updateUser(referrerId, {
-      invitedCount: (u.invitedCount || 0) + 1,
+    updateUser(referrerId, {
+      invitedCount: refUser.invitedCount + 1,
     });
   }
 
   promoState.delete(ctx.from.id);
 
-  await createPayment(ctx, tariff, referrerId, finalPrice, text);
+  createPayment(ctx, tariff, referrerId, finalPrice, text);
 });
 
 // поддержка / админ / рассылки
@@ -206,19 +202,16 @@ app.post("/webhook", (req, res) => {
   res.sendStatus(200);
 });
 
-
 async function start() {
-  // Устанавливаем webhook
   await bot.telegram.setWebhook(
     "https://astraguardvpn-production.up.railway.app/webhook"
   );
 
-
   console.log("Webhook set");
 
-  // Запускаем сервер
   app.listen(3000, () => console.log("Server running on 3000"));
 }
+
 bot.catch((err, ctx) => {
   console.error("Bot error:", err);
 });

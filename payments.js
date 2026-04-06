@@ -1,6 +1,6 @@
 const axios = require("axios");
 const crypto = require("crypto");
-const connectDB = require("./db");
+const db = require("./db");
 
 const {
   ANYPAY_API_ID,
@@ -18,22 +18,23 @@ function generateOrderId(userId, tariffId) {
 }
 
 async function createPayment(ctx, tariff, referrerId, amount, promoOrRef) {
-  const db = await connectDB();
-  const payments = db.collection("payments");
-
   const orderId = generateOrderId(ctx.from.id, tariff.id);
 
-  await payments.insertOne({
+  // запись в SQLite
+  db.prepare(`
+    INSERT INTO payments (orderId, userId, tariffId, referrerId, amount, promoOrRef, status, createdAt)
+    VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
+  `).run(
     orderId,
-    userId: ctx.from.id,
-    tariffId: tariff.id,
-    referrerId: referrerId || null,
+    ctx.from.id,
+    tariff.id,
+    referrerId || null,
     amount,
-    promoOrRef: promoOrRef || null,
-    status: "pending",
-    createdAt: Date.now(),
-  });
+    promoOrRef || null,
+    Date.now()
+  );
 
+  // создаём счёт в AnyPay
   const res = await axios.post("https://anypay.io/api/v3/invoice/create", {
     api_id: ANYPAY_API_ID,
     api_key: ANYPAY_API_KEY,
@@ -51,6 +52,7 @@ async function createPayment(ctx, tariff, referrerId, amount, promoOrRef) {
 async function handleWebhook(bot, data) {
   const { order_id, status, sign } = data;
 
+  // проверка подписи
   const check = crypto
     .createHash("sha256")
     .update(order_id + ANYPAY_SECRET)
@@ -58,21 +60,27 @@ async function handleWebhook(bot, data) {
 
   if (check !== sign) return;
 
-  const db = await connectDB();
-  const payments = db.collection("payments");
+  // ищем платёж
+  const payment = db
+    .prepare("SELECT * FROM payments WHERE orderId = ?")
+    .get(order_id);
 
-  const payment = await payments.findOne({ orderId: order_id });
   if (!payment) return;
 
+  // если не оплачен
   if (status !== "paid") {
-    await payments.updateOne({ orderId: order_id }, { $set: { status: "failed" } });
+    db.prepare("UPDATE payments SET status = 'failed' WHERE orderId = ?")
+      .run(order_id);
     return;
   }
 
-  await payments.updateOne({ orderId: order_id }, { $set: { status: "success" } });
+  // помечаем как успешный
+  db.prepare("UPDATE payments SET status = 'success' WHERE orderId = ?")
+    .run(order_id);
 
   const { userId, tariffId, referrerId } = payment;
 
+  // дни тарифа
   const tariffDays = {
     "7d": 7,
     "30d": 30,
@@ -81,11 +89,13 @@ async function handleWebhook(bot, data) {
     "365d": 365,
   }[tariffId];
 
+  // обновляем подписку пользователя
   const user = await getUser(userId);
   const now = Date.now();
   const current = user.subscriptionUntil > now ? user.subscriptionUntil : now;
   const newUntil = current + tariffDays * 86400000;
 
+  // создаём ключ
   const { key } = await createPaidKey(userId, tariffDays);
 
   await updateUser(userId, {
@@ -93,6 +103,7 @@ async function handleWebhook(bot, data) {
     lastKey: key,
   });
 
+  // рефералка
   if (referrerId) {
     const refUser = await getUser(referrerId);
     const refNow = Date.now();
@@ -110,6 +121,7 @@ async function handleWebhook(bot, data) {
     );
   }
 
+  // уведомление пользователя
   bot.telegram.sendMessage(
     userId,
     `Оплата получена!\nПодписка до: ${new Date(newUntil).toLocaleString("ru-RU")}\nКлюч: ${key}`

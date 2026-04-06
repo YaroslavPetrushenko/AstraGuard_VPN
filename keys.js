@@ -1,46 +1,32 @@
-const connectDB = require("./db");
+const db = require("./db");
 const crypto = require("crypto");
 
 function gen(prefix) {
   return `${prefix}-` + crypto.randomBytes(4).toString("hex").toUpperCase();
 }
 
-async function createTrialKey(userId, days) {
-  const db = await connectDB();
-  const keys = db.collection("keys");
-
+function createTrialKey(userId, days) {
   const key = gen("TRIAL");
   const now = Date.now();
   const expiresAt = now + days * 86400000;
 
-  await keys.insertOne({
-    key,
-    userId,
-    type: "trial",
-    createdAt: now,
-    expiresAt,
-    status: "active",
-  });
+  db.prepare(`
+    INSERT INTO keys (key, userId, type, createdAt, expiresAt, status)
+    VALUES (?, ?, 'trial', ?, ?, 'active')
+  `).run(key, userId, now, expiresAt);
 
   return { key, expiresAt };
 }
 
-async function createPaidKey(userId, days) {
-  const db = await connectDB();
-  const keys = db.collection("keys");
-
+function createPaidKey(userId, days) {
   const key = gen("PAID");
   const now = Date.now();
   const expiresAt = now + days * 86400000;
 
-  await keys.insertOne({
-    key,
-    userId,
-    type: "paid",
-    createdAt: now,
-    expiresAt,
-    status: "active",
-  });
+  db.prepare(`
+    INSERT INTO keys (key, userId, type, createdAt, expiresAt, status)
+    VALUES (?, ?, 'paid', ?, ?, 'active')
+  `).run(key, userId, now, expiresAt);
 
   return { key, expiresAt };
 }
