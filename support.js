@@ -3,17 +3,14 @@ const { ADMIN_ID } = require("./config");
 module.exports = function registerSupport(bot) {
   const supportState = new Map();
 
-  // Кнопка "Поддержка"
   bot.hears("💬 Поддержка", (ctx) => {
     supportState.set(ctx.from.id, true);
     ctx.reply("Напишите ваш вопрос одним сообщением. Техподдержка ответит вам в ближайшее время.");
   });
 
-  // Перехват текста для поддержки
   bot.on("text", async (ctx, next) => {
     const text = ctx.message.text;
 
-    // системные кнопки — пропускаем
     const buttons = [
       "🚀 Мой VPN",
       "💳 Купить подписку",
@@ -25,10 +22,8 @@ module.exports = function registerSupport(bot) {
     ];
     if (buttons.includes(text)) return next();
 
-    // если это админ — пропускаем
     if (ctx.from.id === ADMIN_ID) return next();
 
-    // если пользователь не в режиме поддержки — пропускаем
     if (!supportState.get(ctx.from.id)) return next();
 
     await ctx.telegram.sendMessage(
@@ -45,14 +40,11 @@ module.exports = function registerSupport(bot) {
     supportState.delete(ctx.from.id);
   });
 
-  // Ответ админа
   bot.command("reply", async (ctx) => {
     if (ctx.from.id !== ADMIN_ID) return;
 
     const args = ctx.message.text.split(" ");
-    if (args.length < 3) {
-      return ctx.reply("Использование: /reply USER_ID текст ответа");
-    }
+    if (args.length < 3) return ctx.reply("Использование: /reply USER_ID текст");
 
     const userId = args[1];
     const text = args.slice(2).join(" ");
@@ -63,7 +55,7 @@ module.exports = function registerSupport(bot) {
         `📩 *Ответ от техподдержки:*\n\n${text}`,
         { parse_mode: "Markdown" }
       );
-      ctx.reply("Ответ отправлен пользователю.");
+      ctx.reply("Ответ отправлен.");
     } catch {
       ctx.reply("Ошибка: пользователь недоступен.");
     }

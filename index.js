@@ -148,13 +148,16 @@ bot.action(/tariff_(.+)/, (ctx) => {
 });
 
 // промокод / рефералка
+// промокод / рефералка
 bot.on("text", (ctx, next) => {
   const tariffId = promoState.get(ctx.from.id);
+
+  // если нет активного тарифа — пропускаем
   if (!tariffId) return next();
 
   const text = ctx.message.text.trim();
 
-  // если человек передумал и нажал кнопку — не трогаем, пропускаем дальше
+  // если человек нажал кнопку — пропускаем дальше
   const buttons = [
     "🚀 Мой VPN",
     "💳 Купить подписку",
@@ -177,18 +180,20 @@ bot.on("text", (ctx, next) => {
   let referrerId = null;
   let finalPrice = tariff.price;
 
+  // ПРОМОКОД
   const promo = PROMOCODES.find((p) => p.code === upper);
-
   if (promo) {
     if (promo.usesLeft <= 0) return ctx.reply("Промокод больше не действует.");
     promo.usesLeft--;
     finalPrice = Math.round(finalPrice * (1 - promo.discount / 100));
     ctx.reply(`🎉 Промокод применён! Цена: ${finalPrice}₽`);
-  } else if (upper !== "НЕТ") {
+  }
+
+  // РЕФЕРАЛЬНЫЙ КОД
+  else if (upper !== "НЕТ") {
     const refUser = findUserByReferralCode(upper);
     if (!refUser) return ctx.reply("Код не найден.");
 
-    // ВАЖНО: тут почти наверняка id, а не userId
     const refId = refUser.userId || refUser.id;
     if (String(refId) === String(ctx.from.id))
       return ctx.reply("Нельзя использовать свой код.");
@@ -204,6 +209,7 @@ bot.on("text", (ctx, next) => {
 
   createPayment(ctx, tariff, referrerId, finalPrice, upper);
 });
+
 
 
 // поддержка / админ / рассылки
