@@ -1,6 +1,6 @@
 const { MongoClient } = require("mongodb");
 
-const uri = "mongodb+srv://petyara11_db_user:VH05EGt8yuQYwFSC@astraguardvpn.j942emt.mongodb.net/?appName=AstraGuardVPN";
+const uri = "mongodb+srv://petyara11_db_user:VH05EGt8yuQYwFSC@astraguardvpn.j942emt.mongodb.net/?retryWrites=true&w=majority&tls=true";
 
 const client = new MongoClient(uri);
 
