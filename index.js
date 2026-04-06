@@ -8,17 +8,23 @@ const {
   TRIAL_DAYS,
   PROMOCODES,
   REFERRAL_BONUS_DAYS,
+  ADMIN_ID, // 6784875182
 } = require("./config");
 
 const { getUser, updateUser, findUserByReferralCode } = require("./users");
 const { createTrialKey } = require("./keys");
 const { createPayment, handleWebhook } = require("./payments");
-const registerSupport = require("./support");
 const registerAdminCommands = require("./admin");
 const registerBroadcast = require("./broadcast");
 
 const bot = new Telegraf(TELEGRAM_BOT_TOKEN);
+
+// если хочешь добавить подругу — просто добавь её ID сюда
+const ADMINS = [ADMIN_ID]; 
+// пример: const ADMINS = [6784875182, 1234567890];
+
 const promoState = new Map();
+const supportState = new Map();
 
 function mainMenu() {
   return Markup.keyboard([
@@ -36,7 +42,7 @@ function formatDate(ts) {
 
 // авто-создание пользователя
 bot.use((ctx, next) => {
-  if (ctx.from) getUser(ctx.from.id); // SQLite синхронный — await не нужен
+  if (ctx.from) getUser(ctx.from.id);
   return next();
 });
 
@@ -99,7 +105,7 @@ bot.hears("👥 Реферальная программа", (ctx) => {
     `Твой реферальный код:\n\`${user.referralCode}\`\n\n` +
     `Приглашено: ${user.invitedCount}\n` +
     `Оплатили: ${user.paidCount}\n\n` +
-    `За каждую оплату — +${REFERRAL_BONУС_DAYS} дней.`,
+    `За каждую оплату — +${REFERRAL_BONUS_DAYS} дней.`,
     { parse_mode: "Markdown", ...mainMenu() }
   );
 });
@@ -147,17 +153,13 @@ bot.action(/tariff_(.+)/, (ctx) => {
   ctx.reply("Введите промокод или реферальный код.\nЕсли нет — напишите: нет");
 });
 
-// промокод / рефералка
-// промокод / рефералка
-bot.on("text", (ctx, next) => {
-  const tariffId = promoState.get(ctx.from.id);
-
-  // если нет активного тарифа — пропускаем
-  if (!tariffId) return next();
-
+// ===============================
+// ГЛАВНЫЙ ОБРАБОТЧИК ТЕКСТА
+// ===============================
+bot.on("text", async (ctx, next) => {
   const text = ctx.message.text.trim();
+  const userId = ctx.from.id;
 
-  // если человек нажал кнопку — пропускаем дальше
   const buttons = [
     "🚀 Мой VPN",
     "💳 Купить подписку",
@@ -167,35 +169,57 @@ bot.on("text", (ctx, next) => {
     "ℹ️ О сервисе",
     "💬 Поддержка",
   ];
+
   if (buttons.includes(text)) return next();
+
+  // ===============================
+  // 1) ТЕХПОДДЕРЖКА
+  // ===============================
+  if (supportState.get(userId)) {
+    supportState.delete(userId);
+
+    for (const admin of ADMINS) {
+      await ctx.telegram.sendMessage(
+        admin,
+        `🆘 *Новый вопрос в поддержку*\n\n` +
+        `От: ${ctx.from.first_name} (@${ctx.from.username || "нет"})\n` +
+        `ID: ${ctx.from.id}\n\n` +
+        `Вопрос:\n${text}`,
+        { parse_mode: "Markdown" }
+      );
+    }
+
+    return ctx.reply("Ваш вопрос отправлен. Ожидайте ответа от техподдержки.");
+  }
+
+  // ===============================
+  // 2) ПРОМОКОД / РЕФЕРАЛКА
+  // ===============================
+  const tariffId = promoState.get(userId);
+  if (!tariffId) return next();
 
   const tariff = TARIFFS.find((t) => t.id === tariffId);
   if (!tariff) {
-    promoState.delete(ctx.from.id);
+    promoState.delete(userId);
     return ctx.reply("Ошибка: тариф не найден.");
   }
 
   const upper = text.toUpperCase();
-
   let referrerId = null;
   let finalPrice = tariff.price;
 
-  // ПРОМОКОД
   const promo = PROMOCODES.find((p) => p.code === upper);
   if (promo) {
     if (promo.usesLeft <= 0) return ctx.reply("Промокод больше не действует.");
     promo.usesLeft--;
     finalPrice = Math.round(finalPrice * (1 - promo.discount / 100));
     ctx.reply(`🎉 Промокод применён! Цена: ${finalPrice}₽`);
-  }
-
-  // РЕФЕРАЛЬНЫЙ КОД
-  else if (upper !== "НЕТ") {
+  } else if (upper !== "НЕТ") {
     const refUser = findUserByReferralCode(upper);
     if (!refUser) return ctx.reply("Код не найден.");
 
     const refId = refUser.userId || refUser.id;
-    if (String(refId) === String(ctx.from.id))
+    if (String(refId) === String(userId))
       return ctx.reply("Нельзя использовать свой код.");
 
     referrerId = refId;
@@ -205,15 +229,36 @@ bot.on("text", (ctx, next) => {
     });
   }
 
-  promoState.delete(ctx.from.id);
+  promoState.delete(userId);
 
   createPayment(ctx, tariff, referrerId, finalPrice, upper);
 });
 
+// ===============================
+// ОТВЕТ АДМИНА
+// ===============================
+bot.command("reply", async (ctx) => {
+  if (!ADMINS.includes(ctx.from.id)) return;
 
+  const args = ctx.message.text.split(" ");
+  if (args.length < 3) return ctx.reply("Использование: /reply USER_ID текст");
 
-// поддержка / админ / рассылки
-registerSupport(bot);
+  const userId = args[1];
+  const text = args.slice(2).join(" ");
+
+  try {
+    await ctx.telegram.sendMessage(
+      userId,
+      `📩 *Ответ от техподдержки:*\n\n${text}`,
+      { parse_mode: "Markdown" }
+    );
+    ctx.reply("Ответ отправлен.");
+  } catch {
+    ctx.reply("Ошибка: пользователь недоступен.");
+  }
+});
+
+// админ + рассылки
 registerAdminCommands(bot);
 registerBroadcast(bot);
 
