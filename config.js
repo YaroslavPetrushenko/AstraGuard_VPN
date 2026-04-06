@@ -4,7 +4,7 @@ module.exports = {
   ANYPAY_API_ID: "6UQFFQBVEOTVG5ZO8U",
   ANYPAY_API_KEY: "NhpyWSDreOHxQVy4CZU4yu1VkPkcEBesBmf0mNc",
   ANYPAY_SECRET: "JPqLuGMxDCtdIa8gqGGMVbtUOo28Rgf08Vrhk5B",
-  ANYPAY_WEBHOOK_URL: "https://ТВОЙ_ДОМЕН/anypay/webhook",
+  ANYPAY_WEBHOOK_URL: "https://astraguardvpn-production.up.railway.app/anypay/webhook",
 
   ADMIN_ID: 6784875182,
 

@@ -1,6 +1,3 @@
-// ===============================
-// IMPORTS
-// ===============================
 const express = require("express");
 const bodyParser = require("body-parser");
 const { Telegraf, Markup } = require("telegraf");
@@ -14,20 +11,15 @@ const {
 } = require("./config");
 
 const { getUser, updateUser, findUserByReferralCode } = require("./users");
-const { createTrialKey, createPaidKey } = require("./keys");
-const payments = require("./payments");
+const { createTrialKey } = require("./keys");
+const { createPayment, handleWebhook } = require("./payments");
+const registerSupport = require("./support");
 const registerAdminCommands = require("./admin");
 const registerBroadcast = require("./broadcast");
-const registerSupport = require("./support");
 
-// ===============================
-// INIT BOT
-// ===============================
 const bot = new Telegraf(TELEGRAM_BOT_TOKEN);
+const promoState = new Map();
 
-// ===============================
-// HELPERS
-// ===============================
 function mainMenu() {
   return Markup.keyboard([
     ["🚀 Мой VPN", "💳 Купить подписку"],
@@ -42,30 +34,22 @@ function formatDate(ts) {
   return new Date(ts).toLocaleString("ru-RU");
 }
 
-// ===============================
-// AUTO‑CREATE USER
-// ===============================
+// авто-создание пользователя
 bot.on("message", async (ctx, next) => {
   await getUser(ctx.from.id);
   next();
 });
 
-// ===============================
-// START
-// ===============================
+// старт
 bot.start(async (ctx) => {
   const user = await getUser(ctx.from.id);
   ctx.reply(
-    `Привет, ${ctx.from.first_name}!\n\n` +
-      `Твой реферальный код: ${user.referralCode}\n\n` +
-      `Выбери действие в меню ниже.`,
+    `Привет, ${ctx.from.first_name}!\n\nТвой реферальный код: ${user.referralCode}`,
     mainMenu()
   );
 });
 
-// ===============================
-// МОЙ VPN
-// ===============================
+// мой vpn
 bot.hears("🚀 Мой VPN", async (ctx) => {
   const user = await getUser(ctx.from.id);
 
@@ -83,9 +67,7 @@ bot.hears("🚀 Мой VPN", async (ctx) => {
   );
 });
 
-// ===============================
-// ПРОБНЫЙ ДОСТУП
-// ===============================
+// пробный
 bot.hears("🆓 Пробный доступ", async (ctx) => {
   const user = await getUser(ctx.from.id);
 
@@ -108,9 +90,7 @@ bot.hears("🆓 Пробный доступ", async (ctx) => {
   );
 });
 
-// ===============================
-// РЕФЕРАЛЬНАЯ ПРОГРАММА
-// ===============================
+// рефералка
 bot.hears("👥 Реферальная программа", async (ctx) => {
   const user = await getUser(ctx.from.id);
 
@@ -119,27 +99,23 @@ bot.hears("👥 Реферальная программа", async (ctx) => {
       `Твой реферальный код:\n\`${user.referralCode}\`\n\n` +
       `Приглашено: ${user.invitedCount}\n` +
       `Оплатили: ${user.paidCount}\n\n` +
-      `За каждую оплату по твоему коду — +${REFERRAL_BONUS_DAYS} дней.`,
+      `За каждую оплату — +${REFERRAL_BONУС_DAYS} дней.`,
     { parse_mode: "Markdown", ...mainMenu() }
   );
 });
 
-// ===============================
-// КАК ПОДКЛЮЧИТЬСЯ
-// ===============================
+// как подключиться
 bot.hears("📱 Как подключиться?", (ctx) => {
   ctx.reply(
     "📱 *Как подключиться к VPN*\n\n" +
       "1. Установи приложение VPN.\n" +
-      "2. Вставь выданный ключ.\n" +
-      "3. Нажми «Подключиться».",
+      "2. Вставь ключ.\n" +
+      "3. Подключись.",
     { parse_mode: "Markdown", ...mainMenu() }
   );
 });
 
-// ===============================
-// О СЕРВИСЕ
-// ===============================
+// о сервисе
 bot.hears("ℹ️ О сервисе", (ctx) => {
   ctx.reply(
     "ℹ️ *AstraGuardVPN*\n\n" +
@@ -151,9 +127,7 @@ bot.hears("ℹ️ О сервисе", (ctx) => {
   );
 });
 
-// ===============================
-// КУПИТЬ ПОДПИСКУ
-// ===============================
+// купить подписку
 bot.hears("💳 Купить подписку", (ctx) => {
   const buttons = TARIFFS.map((t) => [
     Markup.button.callback(`${t.title} — ${t.price}₽`, `tariff_${t.id}`),
@@ -161,74 +135,67 @@ bot.hears("💳 Купить подписку", (ctx) => {
   ctx.reply("Выбери тариф:", Markup.inlineKeyboard(buttons));
 });
 
-// ===============================
-// ВЫБОР ТАРИФА
-// ===============================
-const promoState = new Map();
-
+// выбор тарифа
 bot.action(/tariff_(.+)/, async (ctx) => {
   const tariffId = ctx.match[1];
+  const tariff = TARIFFS.find((t) => t.id === tariffId);
+  if (!tariff) return ctx.answerCbQuery("Ошибка: тариф не найден");
+
   promoState.set(ctx.from.id, tariffId);
 
   await ctx.answerCbQuery();
-  ctx.reply("Введите промокод или реферальный код:");
+  ctx.reply("Введите промокод или реферальный код.\nЕсли нет — напишите: нет");
 });
 
-// ===============================
-// ПРОМОКОД / РЕФЕРАЛКА
-// ===============================
+// промокод / рефералка
 bot.on("text", async (ctx, next) => {
   const tariffId = promoState.get(ctx.from.id);
   if (!tariffId) return next();
 
   const tariff = TARIFFS.find((t) => t.id === tariffId);
-  const code = ctx.message.text.trim().toUpperCase();
+  const text = ctx.message.text.trim().toUpperCase();
 
   let referrerId = null;
+  let finalPrice = tariff.price;
 
-  const refUser = await findUserByReferralCode(code);
-  if (refUser && refUser.userId !== ctx.from.id) {
+  const promo = PROMOCODES.find((p) => p.code === text);
+
+  if (promo) {
+    if (promo.usesLeft <= 0) return ctx.reply("Промокод больше не действует.");
+    promo.usesLeft--;
+    finalPrice = Math.round(finalPrice * (1 - promo.discount / 100));
+    ctx.reply(`🎉 Промокод применён! Цена: ${finalPrice}₽`);
+  } else if (text !== "НЕТ") {
+    const refUser = await findUserByReferralCode(text);
+    if (!refUser) return ctx.reply("Код не найден.");
+    if (refUser.userId === ctx.from.id) return ctx.reply("Нельзя использовать свой код.");
     referrerId = refUser.userId;
+
+    const u = await getUser(referrerId);
+    await updateUser(referrerId, {
+      invitedCount: (u.invitedCount || 0) + 1,
+    });
   }
 
   promoState.delete(ctx.from.id);
 
-  await payments.createPayment(ctx, tariff, referrerId, tariff.price, code);
+  await createPayment(ctx, tariff, referrerId, finalPrice, text);
 });
 
-// ===============================
-// ПОДДЕРЖКА
-// ===============================
+// поддержка / админ / рассылки
 registerSupport(bot);
-
-// ===============================
-// АДМИН‑КОМАНДЫ
-// ===============================
 registerAdminCommands(bot);
-
-// ===============================
-// РАССЫЛКИ
-// ===============================
 registerBroadcast(bot);
 
-// ===============================
-// ФОТО‑РАССЫЛКА
-// ===============================
-
-// ===============================
-// EXPRESS + WEBHOOK
-// ===============================
+// express + webhook
 const app = express();
 app.use(bodyParser.json());
 
 app.post("/anypay/webhook", async (req, res) => {
-  await payments.handleWebhook(bot, req.body);
+  await handleWebhook(bot, req.body);
   res.send("OK");
 });
 
-// ===============================
-// START
-// ===============================
 bot.launch();
 app.listen(3000, () => console.log("Server running on 3000"));
 console.log("AstraGuardVPN bot started");
