@@ -219,5 +219,8 @@ async function start() {
   // Запускаем сервер
   app.listen(3000, () => console.log("Server running on 3000"));
 }
+bot.catch((err, ctx) => {
+  console.error("Bot error:", err);
+});
 
 start();
