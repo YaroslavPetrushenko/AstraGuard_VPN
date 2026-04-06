@@ -194,12 +194,28 @@ registerBroadcast(bot);
 const app = express();
 app.use(bodyParser.json());
 
+// AnyPay webhook
 app.post("/anypay/webhook", async (req, res) => {
   await handleWebhook(bot, req.body);
   res.send("OK");
 });
 
-bot.telegram.deleteWebhook({ drop_pending_updates: true });
-bot.launch();
-app.listen(3000, () => console.log("Server running on 3000"));
-console.log("AstraGuardVPN bot started");
+// Telegram webhook endpoint
+app.post(`/bot${TELEGRAM_BOT_TOKEN}`, (req, res) => {
+  bot.handleUpdate(req.body);
+  res.sendStatus(200);
+});
+
+async function start() {
+  // Устанавливаем webhook
+  await bot.telegram.setWebhook(
+    `https://astraguardvpn-production.up.railway.app/bot${TELEGRAM_BOT_TOKEN}`
+  );
+
+  console.log("Webhook set");
+
+  // Запускаем сервер
+  app.listen(3000, () => console.log("Server running on 3000"));
+}
+
+start();
