@@ -1,20 +1,22 @@
 const { ADMIN_ID } = require("./config");
 
 module.exports = function registerSupport(bot) {
+  const supportState = new Map(); // локальное хранилище режима поддержки
+
   // Кнопка "Поддержка"
   bot.hears("💬 Поддержка", (ctx) => {
+    supportState.set(ctx.from.id, true);
+
     ctx.reply(
-      "Напишите ваш вопрос одним сообщением. Техподдержка ответит вам в ближайшее время.",
-      { ...ctx.session, reply_markup: { keyboard: ctx.session.mainMenu, resize_keyboard: true } }
+      "Напишите ваш вопрос одним сообщением. Техподдержка ответит вам в ближайшее время."
     );
-    ctx.session.supportMode = true;
   });
 
   // Перехват сообщений пользователя → отправка админу
   bot.on("text", async (ctx, next) => {
     const text = ctx.message.text;
 
-    // если это системные кнопки — пропускаем
+    // системные кнопки — пропускаем
     const skip = [
       "🚀 Мой VPN",
       "💳 Купить подписку",
@@ -31,7 +33,7 @@ module.exports = function registerSupport(bot) {
     if (ctx.from.id === ADMIN_ID) return next();
 
     // если пользователь НЕ в режиме поддержки — пропускаем
-    if (!ctx.session.supportMode) return next();
+    if (!supportState.get(ctx.from.id)) return next();
 
     // отправляем админу
     await ctx.telegram.sendMessage(
@@ -43,12 +45,9 @@ module.exports = function registerSupport(bot) {
       { parse_mode: "Markdown" }
     );
 
-    ctx.reply(
-      "Ваш вопрос отправлен. Ожидайте ответа от техподдержки.",
-      { ...ctx.session, reply_markup: { keyboard: ctx.session.mainMenu, resize_keyboard: true } }
-    );
+    ctx.reply("Ваш вопрос отправлен. Ожидайте ответа от техподдержки.");
 
-    ctx.session.supportMode = false;
+    supportState.delete(ctx.from.id);
   });
 
   // Ответ админа пользователю
