@@ -201,16 +201,18 @@ app.post("/anypay/webhook", async (req, res) => {
 });
 
 // Telegram webhook endpoint
-app.post(`/bot${TELEGRAM_BOT_TOKEN}`, (req, res) => {
+app.post("/webhook", (req, res) => {
   bot.handleUpdate(req.body);
   res.sendStatus(200);
 });
 
+
 async function start() {
   // Устанавливаем webhook
   await bot.telegram.setWebhook(
-    `https://astraguardvpn-production.up.railway.app/bot${TELEGRAM_BOT_TOKEN}`
+    "https://astraguardvpn-production.up.railway.app/webhook"
   );
+
 
   console.log("Webhook set");
 
