@@ -104,22 +104,26 @@ async function handleWebhook(bot, data) {
   });
 
   // рефералка
+  // рефереру — бонусные дни + paidCount++
   if (referrerId) {
-    const refUser = await getUser(referrerId);
+    const refUser = getUser(referrerId);
     const refNow = Date.now();
-    const refCurrent = refUser.subscriptionUntil > refNow ? refUser.subscriptionUntil : refNow;
+    const refCurrent =
+      refUser.subscriptionUntil > refNow ? refUser.subscriptionUntil : refNow;
+
     const refNew = refCurrent + REFERRAL_BONUS_DAYS * 86400000;
 
-    await updateUser(referrerId, {
+    updateUser(referrerId, {
       subscriptionUntil: refNew,
       paidCount: (refUser.paidCount || 0) + 1,
     });
 
     bot.telegram.sendMessage(
       referrerId,
-      `🎉 Твой код использовали! +${REFERRAL_BONUS_DAYS} дней.`
+      `🎉 Твой промокод использовали! Тебе начислено +${REFERRAL_BONUS_DAYS} дней.`
     );
   }
+
 
   // уведомление пользователя
   bot.telegram.sendMessage(
