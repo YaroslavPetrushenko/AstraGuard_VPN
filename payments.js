@@ -105,6 +105,7 @@ async function handleWebhook(bot, data) {
 
   // рефералка
   // рефереру — бонусные дни + paidCount++
+  // рефереру — бонусные дни + paidCount++
   if (referrerId) {
     const refUser = getUser(referrerId);
     const refNow = Date.now();
@@ -123,6 +124,7 @@ async function handleWebhook(bot, data) {
       `🎉 Твой промокод использовали! Тебе начислено +${REFERRAL_BONUS_DAYS} дней.`
     );
   }
+
 
 
   // уведомление пользователя

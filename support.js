@@ -4,18 +4,17 @@ module.exports = function registerSupport(bot) {
   // Кнопка "Поддержка"
   bot.hears("💬 Поддержка", (ctx) => {
     ctx.reply(
-      "💬 *Техподдержка*\n\n" +
-      "Напиши свой вопрос одним сообщением — оно будет отправлено администратору.\n" +
-      "Ответ придёт сюда же.",
-      { parse_mode: "Markdown" }
+      "Напишите ваш вопрос одним сообщением. Техподдержка ответит вам в ближайшее время.",
+      { ...ctx.session, reply_markup: { keyboard: ctx.session.mainMenu, resize_keyboard: true } }
     );
+    ctx.session.supportMode = true;
   });
 
-  // Перехват всех сообщений пользователя → отправка админу
+  // Перехват сообщений пользователя → отправка админу
   bot.on("text", async (ctx, next) => {
     const text = ctx.message.text;
 
-    // системные кнопки — пропускаем
+    // если это системные кнопки — пропускаем
     const skip = [
       "🚀 Мой VPN",
       "💳 Купить подписку",
@@ -28,19 +27,28 @@ module.exports = function registerSupport(bot) {
 
     if (skip.includes(text)) return next();
 
-    // если пишет админ — пропускаем
+    // если это админ — пропускаем
     if (ctx.from.id === ADMIN_ID) return next();
+
+    // если пользователь НЕ в режиме поддержки — пропускаем
+    if (!ctx.session.supportMode) return next();
 
     // отправляем админу
     await ctx.telegram.sendMessage(
       ADMIN_ID,
-      `📩 *Новое сообщение в поддержку*\n\n` +
-      `От: ${ctx.from.first_name} (ID: ${ctx.from.id})\n\n` +
-      `Сообщение:\n${text}`,
+      `🆘 *Новый вопрос в поддержку*\n\n` +
+      `От: ${ctx.from.first_name} (@${ctx.from.username || "нет"})\n` +
+      `ID: ${ctx.from.id}\n\n` +
+      `Вопрос:\n${text}`,
       { parse_mode: "Markdown" }
     );
 
-    ctx.reply("📨 Сообщение отправлено! Ожидай ответа.");
+    ctx.reply(
+      "Ваш вопрос отправлен. Ожидайте ответа от техподдержки.",
+      { ...ctx.session, reply_markup: { keyboard: ctx.session.mainMenu, resize_keyboard: true } }
+    );
+
+    ctx.session.supportMode = false;
   });
 
   // Ответ админа пользователю
