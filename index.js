@@ -31,6 +31,10 @@ const {
   deactivateExpiredKeys,
 } = require("./keys");
 
+const express = require("express");
+const app = express();
+app.use(express.json());
+
 const bot = new Telegraf(BOT_TOKEN);
 
 // ===============================
@@ -329,9 +333,13 @@ setInterval(deliverAdminMessages, 3000);
 // ===============================
 // Запуск бота
 // ===============================
-bot.launch().then(() => {
-  console.log("Client bot launched");
+bot.telegram.setWebhook("https://astraguardvpn-production.up.railway.app/webhook");
+app.use(bot.webhookCallback("/webhook"));
+
+app.listen(process.env.PORT || 3000, () => {
+  console.log("Client bot running via webhook");
 });
+
 
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
