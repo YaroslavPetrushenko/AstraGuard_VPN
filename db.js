@@ -1,47 +1,26 @@
-const Database = require("better-sqlite3");
+const { Pool } = require("pg");
+const { DATABASE_URL } = require("./config");
 
-const db = new Database("data.db");
+/**
+ * Подключение к PostgreSQL
+ * Работает на Railway, Render, Neon, Supabase, VPS.
+ */
+const pool = new Pool({
+  connectionString: DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false, // для Railway/Render/Neon
+  },
+});
 
-// USERS
-db.exec(`
-CREATE TABLE IF NOT EXISTS users (
-  userId TEXT PRIMARY KEY,
-  referralCode TEXT,
-  referredBy TEXT,
-  invitedCount INTEGER,
-  paidCount INTEGER,
-  trialUsed INTEGER,
-  subscriptionUntil INTEGER,
-  lastKey TEXT
-);
-`);
+// Проверка подключения (необязательно, но полезно)
+pool
+  .connect()
+  .then((client) => {
+    client.release();
+    console.log("[DB] Подключение к PostgreSQL успешно");
+  })
+  .catch((err) => {
+    console.error("[DB] Ошибка подключения:", err.message);
+  });
 
-// KEYS
-db.exec(`
-CREATE TABLE IF NOT EXISTS keys (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  key TEXT UNIQUE,
-  userId TEXT,
-  type TEXT,
-  createdAt INTEGER,
-  expiresAt INTEGER,
-  status TEXT
-);
-`);
-
-// PAYMENTS
-db.exec(`
-CREATE TABLE IF NOT EXISTS payments (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  orderId TEXT UNIQUE,
-  userId TEXT,
-  tariffId TEXT,
-  referrerId TEXT,
-  amount REAL,
-  promoOrRef TEXT,
-  status TEXT,
-  createdAt INTEGER
-);
-`);
-
-module.exports = db;
+module.exports = { pool };

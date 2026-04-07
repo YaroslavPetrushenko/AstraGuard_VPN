@@ -1,130 +1,152 @@
 const axios = require("axios");
-const crypto = require("crypto");
-const { getUser, updateUser } = require("./users");
-const { generateKey } = require("./keys");
-const { REFERRAL_BONUS_DAYS } = require("./config");
+const { pool } = require("./db");
+const { ANYPAY_API_KEY, ANYPAY_SHOP_ID } = require("./config");
 
-// ===============================
-// СОЗДАНИЕ ПЛАТЕЖА (AnyPay)
-// ===============================
-async function createPayment(ctx, tariff, referrerId, finalPrice, sourceText) {
-  try {
-    const orderId = `ORD-${ctx.from.id}-${tariff.id}-${Date.now()}`;
+/**
+ * Создать платёж в AnyPay и записать его в БД
+ * @param {number} userId  — Telegram ID пользователя
+ * @param {number} days    — срок подписки
+ * @param {number} amount  — сумма в рублях
+ * @returns {Promise<{id: string, pay_url: string}>}
+ */
+async function createPayment(userId, days, amount) {
+  // запрос в AnyPay
+  const res = await axios.post(
+    "https://anypay.io/api/v2/create-payment",
+    {
+      shop_id: ANYPAY_SHOP_ID,
+      amount: amount,
+      currency: "RUB",
+      description: `AstraGuardVPN — ${days} дней`,
+      custom: String(userId),
+    },
+    {
+      headers: {
+        "Content-Type": "application/json",
+        "X-Api-Key": ANYPAY_API_KEY,
+      },
+      timeout: 10000,
+    }
+  );
 
-    const res = await axios.post(
-      "https://anypay.io/api/v3/invoice/create",
-      {
-        api_id: "6UQFFQBVEOTVG5ZO8U",
-        api_key: "NhpyWSDreOHxQVy4CZU4yu1VkPkcEBesBmf0mNc",
-        amount: finalPrice,
-        order_id: orderId,
-        description: `Подписка ${tariff.title}`,
-        callback_url: "https://astraguardvpn-production.up.railway.app/anypay/webhook",
-        success_url: "https://t.me/AstraGuardVPN_bot",
-        fail_url: "https://t.me/AstraGuardVPN_bot",
-      }
-    );
-
-    const payUrl = res.data.data.url;
-
-    // сохраняем данные платежа
-    global.payments = global.payments || new Map();
-    global.payments.set(orderId, {
-      userId: ctx.from.id,
-      tariffId: tariff.id,
-      referrerId,
-      status: "pending",
-    });
-
-    ctx.reply(
-      `Отлично!\nОплати по ссылке:\n${payUrl}\n\n` +
-      `После оплаты подписка активируется автоматически.`
-    );
-  } catch (err) {
-    console.log("AnyPay error:", err.response?.data || err);
-    ctx.reply("Ошибка при создании платежа.");
+  if (!res.data || !res.data.data) {
+    throw new Error("Некорректный ответ AnyPay при создании платежа");
   }
+
+  const pay = res.data.data;
+
+  // сохраняем платёж в БД
+  await pool.query(
+    `
+    INSERT INTO payments (user_id, days, amount, pay_id, pay_url, status, created_at)
+    VALUES ($1, $2, $3, $4, $5, 'pending', NOW())
+    `,
+    [userId, days, amount, pay.id, pay.pay_url]
+  );
+
+  return {
+    id: pay.id,
+    pay_url: pay.pay_url,
+  };
 }
 
-// ===============================
-// ОБРАБОТКА WEBHOOK ANYPAY
-// ===============================
-async function handleWebhook(bot, body) {
-  const { order_id, status, sign } = body;
-
-  // проверка подписи
-  const check = crypto
-    .createHash("sha256")
-    .update(order_id + "JPqLuGMxDCtdIa8gqGGMVbtUOo28Rgf08Vrhk5B")
-    .digest("hex");
-
-  if (check !== sign) {
-    console.log("❌ Неверная подпись");
-    return;
-  }
-
-  if (!global.payments) return;
-  const payment = global.payments.get(order_id);
-  if (!payment) return;
-
-  if (status !== "paid") {
-    payment.status = "failed";
-    return;
-  }
-
-  payment.status = "success";
-
-  const { userId, tariffId, referrerId } = payment;
-
-  // тарифы должны быть в config.js
-  const { TARIFFS } = require("./config");
-  const tariff = TARIFFS.find((t) => t.id === tariffId);
-
-  const user = getUser(userId);
-  const now = Date.now();
-  const current = user.subscriptionUntil > now ? user.subscriptionUntil : now;
-
-  // продление подписки
-  let newUntil = current + tariff.days * 86400000;
-
-  // бонус рефереру
-  if (referrerId) {
-    const refUser = getUser(referrerId);
-    const refNow = Date.now();
-    const refCurrent =
-      refUser.subscriptionUntil > refNow ? refUser.subscriptionUntil : refNow;
-
-    const refNew = refCurrent + REFERRAL_BONUS_DAYS * 86400000;
-
-    updateUser(referrerId, {
-      subscriptionUntil: refNew,
-      paidCount: (refUser.paidCount || 0) + 1,
-    });
-
-    bot.telegram.sendMessage(
-      referrerId,
-      `🎉 Твой код использовали! Тебе начислено +${REFERRAL_BONUS_DAYS} дней.`
-    );
-  }
-
-  // выдача ключа
-  const key = generateKey();
-
-  updateUser(userId, {
-    subscriptionUntil: newUntil,
-    lastKey: key,
-  });
-
-  bot.telegram.sendMessage(
-    userId,
-    `🎉 *Оплата получена!*\n\n` +
-    `Подписка активна до: ${new Date(newUntil).toLocaleString("ru-RU")}\n` +
-    `Твой ключ:\n\`${key}\``,
-    { parse_mode: "Markdown" }
+/**
+ * Проверить статус платежа в AnyPay
+ * @param {string} payId — ID платежа в AnyPay
+ * @returns {Promise<"pending"|"paid"|"canceled"|"error">}
+ */
+async function getRemotePaymentStatus(payId) {
+  const res = await axios.get(
+    `https://anypay.io/api/v2/payment-status?payment_id=${encodeURIComponent(
+      payId
+    )}`,
+    {
+      headers: {
+        "X-Api-Key": ANYPAY_API_KEY,
+      },
+      timeout: 10000,
+    }
   );
+
+  if (!res.data || !res.data.data) {
+    return "error";
+  }
+
+  const status = res.data.data.status;
+
+  if (status === "paid") return "paid";
+  if (status === "canceled") return "canceled";
+  return "pending";
+}
+
+/**
+ * Получить все незавершённые платежи из БД
+ */
+async function getPendingPayments(limit = 50) {
+  const res = await pool.query(
+    `
+    SELECT id, user_id, days, amount, pay_id, pay_url, status
+    FROM payments
+    WHERE status = 'pending'
+    ORDER BY created_at ASC
+    LIMIT $1
+    `,
+    [limit]
+  );
+  return res.rows;
+}
+
+/**
+ * Обновить статус платежа в БД
+ */
+async function updatePaymentStatus(id, status) {
+  await pool.query(
+    `
+    UPDATE payments
+    SET status = $2
+    WHERE id = $1
+    `,
+    [id, status]
+  );
+}
+
+/**
+ * Получить платёж по ID
+ */
+async function getPaymentById(id) {
+  const res = await pool.query(
+    `
+    SELECT *
+    FROM payments
+    WHERE id = $1
+    LIMIT 1
+    `,
+    [id]
+  );
+  return res.rows[0] || null;
+}
+
+/**
+ * Получить платёж по pay_id (AnyPay)
+ */
+async function getPaymentByPayId(payId) {
+  const res = await pool.query(
+    `
+    SELECT *
+    FROM payments
+    WHERE pay_id = $1
+    LIMIT 1
+    `,
+    [payId]
+  );
+  return res.rows[0] || null;
 }
 
 module.exports = {
   createPayment,
-  handleWebhook,
+  getRemotePaymentStatus,
+  getPendingPayments,
+  updatePaymentStatus,
+  getPaymentById,
+  getPaymentByPayId,
 };
