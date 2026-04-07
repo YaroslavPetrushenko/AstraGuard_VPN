@@ -287,7 +287,7 @@ async function processPayments() {
 }
 
 // каждые 5 секунд проверяем платежи
-setInterval(processPayments, 5000);
+
 
 // ===============================
 // Доставка сообщений админа пользователю
@@ -332,7 +332,6 @@ async function deliverAdminMessages() {
 }
 
 // каждые 3 секунды доставляем ответы админов
-setInterval(deliverAdminMessages, 3000);
 
 // ===============================
 // Запуск бота
@@ -348,7 +347,8 @@ app.get("/", (req, res) => res.send("OK"));
 app.listen(process.env.PORT || 3000, () => {
   console.log("Client bot running via webhook");
 });
-
+setInterval(processPayments, 5000);
+setInterval(deliverAdminMessages, 3000);
 
 
 process.once("SIGINT", () => bot.stop("SIGINT"));
