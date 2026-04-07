@@ -1,9 +1,9 @@
-require("dotenv").config();
+const { BOT_TOKEN, WEBHOOK_URL, PORT } = require("./config");
 
 const { Telegraf, Markup } = require("telegraf");
 const crypto = require("crypto");
+const express = require("express");
 
-const { BOT_TOKEN } = require("./config");
 const { pool } = require("./db");
 
 const {
@@ -36,15 +36,20 @@ const {
   deactivateExpiredKeys,
 } = require("./keys");
 
-const express = require("express");
-const app = express();
 
-// Telegram шлёт JSON
+// ===============================
+// Express
+// ===============================
+const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Инициализация бота
+
+// ===============================
+// Telegraf
+// ===============================
 const bot = new Telegraf(BOT_TOKEN, { handlerTimeout: 0 });
+
 
 // ===============================
 // /start
@@ -65,7 +70,7 @@ bot.start(async (ctx) => {
 
   const me = await getUser(user.id);
 
-  let helloName =
+  const helloName =
     me.first_name ||
     me.username ||
     String(me.user_id);
@@ -84,6 +89,7 @@ bot.start(async (ctx) => {
     ]).resize()
   );
 });
+
 
 // ===============================
 // Поддержка
@@ -108,6 +114,7 @@ bot.hears("🛠 Поддержка", async (ctx) => {
   );
 });
 
+
 // ===============================
 // Обработка текстов (тикеты + промокоды)
 // ===============================
@@ -115,7 +122,11 @@ bot.on("text", async (ctx) => {
   const userId = ctx.from.id;
   const text = ctx.message.text.trim();
 
-  // 1. Если есть открытый тикет
+  // Кнопки НЕ должны попадать в поддержку
+  const buttons = ["🛠 Поддержка", "💳 Купить VPN", "🎟 Промокод", "🔑 Мои ключи"];
+  if (buttons.includes(text)) return;
+
+  // 1. Если есть открытый тикет — отправляем сообщение в поддержку
   const ticket = await getUserOpenTicket(userId);
   if (ticket) {
     await addUserMessage(ticket.ticket_id, text);
@@ -146,7 +157,10 @@ bot.on("text", async (ctx) => {
       );
     }
   }
+
+  // 3. Просто текст — игнорируем
 });
+
 
 // ===============================
 // Покупка VPN
@@ -197,6 +211,7 @@ bot.action(/buy_(.+)/, async (ctx) => {
   }
 });
 
+
 // ===============================
 // Мои ключи
 // ===============================
@@ -224,8 +239,9 @@ bot.hears("🔑 Мои ключи", async (ctx) => {
   ctx.reply(text);
 });
 
+
 // ===============================
-// Фоновая обработка платежей
+// Фоновые задачи
 // ===============================
 async function processPayments() {
   try {
@@ -267,9 +283,6 @@ async function processPayments() {
   }
 }
 
-// ===============================
-// Доставка сообщений админа
-// ===============================
 async function deliverAdminMessages() {
   try {
     const res = await pool.query(
@@ -300,14 +313,12 @@ async function deliverAdminMessages() {
   }
 }
 
+
 // ===============================
 // Webhook + сервер
 // ===============================
+bot.telegram.setWebhook(WEBHOOK_URL);
 
-// Устанавливаем webhook ДО запуска сервера
-bot.telegram.setWebhook("https://astraguardvpn-production.up.railway.app/webhook");
-
-// Обработчик webhook
 app.post("/webhook", (req, res) => {
   bot.handleUpdate(req.body)
     .then(() => res.sendStatus(200))
@@ -317,14 +328,11 @@ app.post("/webhook", (req, res) => {
     });
 });
 
-// Health-check
 app.get("/", (req, res) => res.send("OK"));
 
-// Запуск сервера
-app.listen(process.env.PORT || 3000, () => {
+app.listen(PORT, () => {
   console.log("Client bot running via webhook");
 });
 
-// Фоновые задачи
 setInterval(processPayments, 5000);
 setInterval(deliverAdminMessages, 3000);
