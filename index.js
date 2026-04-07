@@ -336,20 +336,30 @@ async function deliverAdminMessages() {
 // ===============================
 // Запуск бота
 // ===============================
-// Webhook endpoint
-bot.telegram.setWebhook("https://astraguardvpn-production.up.railway.app/webhook");
-app.use(bot.webhookCallback("/webhook"));
+// Telegram шлёт webhook как x-www-form-urlencoded
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
 
 // Health-check для Railway
 app.get("/", (req, res) => res.send("OK"));
+
+// Webhook endpoint — ВАЖНО: ПОСЛЕ всех middleware
+app.post("/webhook", (req, res) => {
+  bot.handleUpdate(req.body, res);
+});
+
+// Устанавливаем webhook
+bot.telegram.setWebhook("https://astraguardvpn-production.up.railway.app/webhook");
 
 // Запуск сервера
 app.listen(process.env.PORT || 3000, () => {
   console.log("Client bot running via webhook");
 });
+
+// Фоновые задачи — ТОЛЬКО ПОСЛЕ запуска сервера
 setInterval(processPayments, 5000);
 setInterval(deliverAdminMessages, 3000);
 
-
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
+
