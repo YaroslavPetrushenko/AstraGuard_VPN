@@ -37,6 +37,17 @@ const bot = new Telegraf(BOT_TOKEN);
 // /start
 // ===============================
 bot.start(async (ctx) => {
+  const payload = ctx.startPayload;
+
+  if (payload === "success") {
+    return ctx.reply("🎉 Оплата прошла успешно! Доступ будет выдан автоматически в течение минуты.");
+  }
+
+  if (payload === "fail") {
+    return ctx.reply("❌ Оплата не была завершена. Попробуй снова.");
+  }
+
+  // остальной твой код /start
   const user = ctx.from;
 
   await createUserIfNotExists(user);
@@ -50,18 +61,19 @@ bot.start(async (ctx) => {
 
   ctx.reply(
     `Привет, ${helloName}!\n\n` +
-      "Это клиентский бот AstraGuardVPN.\n" +
-      "Здесь ты можешь:\n" +
-      "• обратиться в поддержку\n" +
-      "• купить VPN\n" +
-      "• применить промокод\n" +
-      "• посмотреть свои ключи",
+    "Это клиентский бот AstraGuardVPN.\n" +
+    "Здесь ты можешь:\n" +
+    "• обратиться в поддержку\n" +
+    "• купить VPN\n" +
+    "• применить промокод\n" +
+    "• посмотреть свои ключи",
     Markup.keyboard([
       ["🛠 Поддержка", "💳 Купить VPN"],
       ["🎟 Промокод", "🔑 Мои ключи"],
     ]).resize()
   );
 });
+
 
 // ===============================
 // Поддержка
@@ -73,7 +85,7 @@ bot.hears("🛠 Поддержка", async (ctx) => {
   if (existing) {
     return ctx.reply(
       `У тебя уже есть открытый тикет: ${existing.ticket_id}\n` +
-        "Напиши сообщение, чтобы продолжить диалог с поддержкой."
+      "Напиши сообщение, чтобы продолжить диалог с поддержкой."
     );
   }
 
@@ -83,7 +95,7 @@ bot.hears("🛠 Поддержка", async (ctx) => {
 
   ctx.reply(
     `Создан тикет: ${ticketId}\n` +
-      "Опиши свою проблему одним или несколькими сообщениями."
+    "Опиши свою проблему одним или несколькими сообщениями."
   );
 });
 
@@ -135,8 +147,8 @@ bot.on("text", async (ctx, next) => {
 
   ctx.reply(
     `🎉 Промокод применён!\n` +
-      `Скидка: ${promo.discount}%\n` +
-      `Осталось использований: ${promo.uses_left - 1}`
+    `Скидка: ${promo.discount}%\n` +
+    `Осталось использований: ${promo.uses_left - 1}`
   );
 });
 
@@ -177,9 +189,9 @@ bot.action(/buy_(.+)/, async (ctx) => {
 
     await ctx.reply(
       `Оплата тарифа на ${days} дней.\n` +
-        `Сумма: ${amount}₽\n\n` +
-        `Перейди по ссылке для оплаты:\n${payment.pay_url}\n\n` +
-        "После оплаты бот автоматически выдаст VPN‑ключ."
+      `Сумма: ${amount}₽\n\n` +
+      `Перейди по ссылке для оплаты:\n${payment.pay_url}\n\n` +
+      "После оплаты бот автоматически выдаст VPN‑ключ."
     );
 
     await ctx.answerCbQuery("Ссылка на оплату отправлена.");
@@ -241,10 +253,10 @@ async function processPayments() {
         await bot.telegram.sendMessage(
           p.user_id,
           `🎉 Оплата получена!\n\n` +
-            `Твой VPN‑ключ:\n\`${keyRow.key}\`\n\n` +
-            `Срок: ${keyRow.days} дней (до ${exp})\n` +
-            `Устройств: ${keyRow.devices}\n` +
-            `Трафик: ${keyRow.traffic}`,
+          `Твой VPN‑ключ:\n\`${keyRow.key}\`\n\n` +
+          `Срок: ${keyRow.days} дней (до ${exp})\n` +
+          `Устройств: ${keyRow.devices}\n` +
+          `Трафик: ${keyRow.traffic}`,
           { parse_mode: "Markdown" }
         );
       } else if (status === "canceled") {
