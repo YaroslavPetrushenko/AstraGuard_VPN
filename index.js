@@ -110,54 +110,43 @@ bot.hears("🛠 Поддержка", async (ctx) => {
 // ===============================
 // Сообщения пользователя (если есть открытый тикет)
 // ===============================
-bot.on("text", async (ctx, next) => {
+bot.on("text", async (ctx) => {
   const userId = ctx.from.id;
-  const text = ctx.message.text;
-
-  const ticket = await getUserOpenTicket(userId);
-  if (!ticket) return next(); // если нет тикета — передаём дальше (на промокод и т.п.)
-
-  await addUserMessage(ticket.ticket_id, text);
-
-  ctx.reply("Сообщение отправлено в поддержку. Ожидай ответа администратора.");
-});
-
-// ===============================
-// Промокоды
-// ===============================
-bot.hears("🎟 Промокод", (ctx) => {
-  ctx.reply("Введи промокод одним сообщением (без пробелов):");
-});
-
-// обработка промокода — только если это не сообщение в тикет (выше уже отфильтровали)
-bot.on("text", async (ctx, next) => {
   const text = ctx.message.text.trim();
 
-  // простая проверка формата промокода
-  if (!/^[A-Za-z0-9]{3,32}$/.test(text)) return next();
-
-  const code = text.toUpperCase();
-  const userId = ctx.from.id;
-
-  const promo = await getPromocode(code);
-  if (!promo) return next();
-
-  if (promo.uses_left <= 0) {
-    return ctx.reply("Этот промокод больше недоступен.");
+  // 1. Если есть открытый тикет — отправляем сообщение в поддержку
+  const ticket = await getUserOpenTicket(userId);
+  if (ticket) {
+    await addUserMessage(ticket.ticket_id, text);
+    return ctx.reply("Сообщение отправлено в поддержку. Ожидай ответа администратора.");
   }
 
-  const used = await hasUserUsedPromo(userId, code);
-  if (used) {
-    return ctx.reply("Ты уже использовал этот промокод.");
+  // 2. Если это промокод
+  if (/^[A-Za-z0-9]{3,32}$/.test(text)) {
+    const code = text.toUpperCase();
+    const promo = await getPromocode(code);
+
+    if (promo) {
+      if (promo.uses_left <= 0) {
+        return ctx.reply("Этот промокод больше недоступен.");
+      }
+
+      const used = await hasUserUsedPromo(userId, code);
+      if (used) {
+        return ctx.reply("Ты уже использовал этот промокод.");
+      }
+
+      await markPromoUsed(userId, code);
+
+      return ctx.reply(
+        `🎉 Промокод применён!\n` +
+        `Скидка: ${promo.discount}%\n` +
+        `Осталось использований: ${promo.uses_left - 1}`
+      );
+    }
   }
 
-  await markPromoUsed(userId, code);
-
-  ctx.reply(
-    `🎉 Промокод применён!\n` +
-    `Скидка: ${promo.discount}%\n` +
-    `Осталось использований: ${promo.uses_left - 1}`
-  );
+  // 3. Если это просто текст — игнорируем
 });
 
 // ===============================
@@ -341,9 +330,15 @@ async function deliverAdminMessages() {
 app.get("/", (req, res) => res.send("OK"));
 
 // Webhook endpoint — единственный
-app.post("/webhook", (req, res) => {
-  bot.handleUpdate(req.body, res);
+app.post("/webhook", async (req, res) => {
+  try {
+    await bot.handleUpdate(req.body, res);
+  } catch (err) {
+    console.error("Webhook error:", err);
+    res.sendStatus(200);
+  }
 });
+
 
 // Устанавливаем webhook
 bot.telegram.setWebhook("https://astraguardvpn-production.up.railway.app/webhook");
