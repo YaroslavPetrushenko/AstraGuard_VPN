@@ -1,145 +1,122 @@
-const axios = require("axios");
 const { pool } = require("./db");
 const { ANYPAY_API_KEY, ANYPAY_SHOP_ID } = require("./config");
 
-/**
- * Создать платёж в AnyPay и записать его в БД
- * @param {number} userId  — Telegram ID пользователя
- * @param {number} days    — срок подписки
- * @param {number} amount  — сумма в рублях
- * @returns {Promise<{id: string, pay_url: string}>}
- */
+// Предполагаем Node 18+ с глобальным fetch
+const ANYPAY_API_URL = "https://anypay.io/api/v1";
+
+// Создание платежа
 async function createPayment(userId, days, amount) {
-  // запрос в AnyPay
-  const res = await axios.post(
-    "https://anypay.io/api/v2/create-payment",
-    {
-      shop_id: ANYPAY_SHOP_ID,
-      amount: amount,
-      currency: "RUB",
-      description: `AstraGuardVPN — ${days} дней`,
-      custom: String(userId),
-    },
-    {
-      headers: {
-        "Content-Type": "application/json",
-        "X-API-KEY": ANYPAY_API_KEY,
-      },
-      timeout: 10000,
-    }
+  // Создаём запись в БД
+  const dbRes = await pool.query(
+    `
+    INSERT INTO payments (user_id, days, amount, status)
+    VALUES ($1, $2, $3, 'pending')
+    RETURNING *;
+    `,
+    [userId, days, amount]
   );
 
-  if (!res.data || !res.data.data) {
-    throw new Error("Некорректный ответ AnyPay при создании платежа");
+  const payment = dbRes.rows[0];
+
+  // Создаём платёж в AnyPay
+  const payload = {
+    shop_id: ANYPAY_SHOP_ID,
+    amount: amount,
+    currency: "RUB",
+    order_id: String(payment.id),
+    desc: `AstraGuardVPN: ${days} дней`,
+  };
+
+  const res = await fetch(`${ANYPAY_API_URL}/invoice`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Api-Key": ANYPAY_API_KEY,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    console.error("AnyPay create invoice error:", res.status, await res.text());
+    throw new Error("AnyPay create invoice failed");
   }
 
-  const pay = res.data.data;
+  const data = await res.json();
 
-  // сохраняем платёж в БД
+  const payId = data.id || data.invoice_id || null;
+  const payUrl = data.link || data.url || null;
+
   await pool.query(
     `
-    INSERT INTO payments (user_id, days, amount, pay_id, pay_url, status, created_at)
-    VALUES ($1, $2, $3, $4, $5, 'pending', NOW())
+    UPDATE payments
+    SET pay_id = $2,
+        pay_url = $3
+    WHERE id = $1;
     `,
-    [userId, days, amount, pay.id, pay.pay_url]
+    [payment.id, payId, payUrl]
   );
 
   return {
-    id: pay.id,
-    pay_url: pay.pay_url,
+    id: payment.id,
+    user_id: payment.user_id,
+    days: payment.days,
+    amount: payment.amount,
+    pay_id: payId,
+    pay_url: payUrl,
   };
 }
 
-/**
- * Проверить статус платежа в AnyPay
- * @param {string} payId — ID платежа в AnyPay
- * @returns {Promise<"pending"|"paid"|"canceled"|"error">}
- */
+// Получение статуса платежа
 async function getRemotePaymentStatus(payId) {
-  const res = await axios.get(
-    `https://anypay.io/api/v2/payment-status?payment_id=${encodeURIComponent(
-      payId
-    )}`,
-    {
-      headers: {
-        "X-Api-Key": ANYPAY_API_KEY,
-      },
-      timeout: 10000,
-    }
-  );
+  if (!payId) return "error";
 
-  if (!res.data || !res.data.data) {
+  const res = await fetch(`${ANYPAY_API_URL}/invoice/${encodeURIComponent(payId)}`, {
+    method: "GET",
+    headers: {
+      "X-Api-Key": ANYPAY_API_KEY,
+    },
+  });
+
+  if (!res.ok) {
+    console.error("AnyPay get invoice error:", res.status, await res.text());
     return "error";
   }
 
-  const status = res.data.data.status;
+  const data = await res.json();
 
-  if (status === "paid") return "paid";
-  if (status === "canceled") return "canceled";
-  return "pending";
+  const status = (data.status || "").toLowerCase();
+
+  if (status === "paid" || status === "success") return "paid";
+  if (status === "canceled" || status === "cancelled" || status === "failed") return "canceled";
+  if (status === "pending" || status === "wait") return "pending";
+
+  return "error";
 }
 
-/**
- * Получить все незавершённые платежи из БД
- */
+// Неподтверждённые платежи
 async function getPendingPayments(limit = 50) {
   const res = await pool.query(
     `
-    SELECT id, user_id, days, amount, pay_id, pay_url, status
+    SELECT *
     FROM payments
     WHERE status = 'pending'
     ORDER BY created_at ASC
-    LIMIT $1
+    LIMIT $1;
     `,
     [limit]
   );
   return res.rows;
 }
 
-/**
- * Обновить статус платежа в БД
- */
 async function updatePaymentStatus(id, status) {
   await pool.query(
     `
     UPDATE payments
     SET status = $2
-    WHERE id = $1
+    WHERE id = $1;
     `,
     [id, status]
   );
-}
-
-/**
- * Получить платёж по ID
- */
-async function getPaymentById(id) {
-  const res = await pool.query(
-    `
-    SELECT *
-    FROM payments
-    WHERE id = $1
-    LIMIT 1
-    `,
-    [id]
-  );
-  return res.rows[0] || null;
-}
-
-/**
- * Получить платёж по pay_id (AnyPay)
- */
-async function getPaymentByPayId(payId) {
-  const res = await pool.query(
-    `
-    SELECT *
-    FROM payments
-    WHERE pay_id = $1
-    LIMIT 1
-    `,
-    [payId]
-  );
-  return res.rows[0] || null;
 }
 
 module.exports = {
@@ -147,6 +124,4 @@ module.exports = {
   getRemotePaymentStatus,
   getPendingPayments,
   updatePaymentStatus,
-  getPaymentById,
-  getPaymentByPayId,
 };

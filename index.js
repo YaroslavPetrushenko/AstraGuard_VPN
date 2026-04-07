@@ -1,28 +1,27 @@
-const { BOT_TOKEN, WEBHOOK_URL, PORT } = require("./config");
+const {
+  BOT_TOKEN,
+  WEBHOOK_URL_CLIENT,
+  PORT,
+  ADMIN_BOT_URL, // опционально: URL админ-сервиса для связи
+} = require("./config");
 
+const express = require("express");
 const { Telegraf, Markup } = require("telegraf");
 const crypto = require("crypto");
-const express = require("express");
 
+// DB
 const { pool } = require("./db");
 
-const {
-  createUserIfNotExists,
-  getUser,
-} = require("./users");
+// Users
+const { createUserIfNotExists, getUser } = require("./users");
 
-const {
-  createTicket,
-  getUserOpenTicket,
-  addUserMessage,
-} = require("./tickets");
+// Tickets
+const { createTicket, getUserOpenTicket, addUserMessage } = require("./tickets");
 
-const {
-  getPromocode,
-  hasUserUsedPromo,
-  markPromoUsed,
-} = require("./promocodes");
+// Promocodes
+const { getPromocode, hasUserUsedPromo, markPromoUsed } = require("./promocodes");
 
+// Payments
 const {
   createPayment,
   getRemotePaymentStatus,
@@ -30,6 +29,7 @@ const {
   updatePaymentStatus,
 } = require("./payments");
 
+// VPN keys
 const {
   createVpnKey,
   getUserActiveKeys,
@@ -75,7 +75,7 @@ bot.start(async (ctx) => {
     me.username ||
     String(me.user_id);
 
-  ctx.reply(
+  await ctx.reply(
     `Привет, ${helloName}!\n\n` +
     "Это клиентский бот AstraGuardVPN.\n" +
     "Здесь ты можешь:\n" +
@@ -108,7 +108,20 @@ bot.hears("🛠 Поддержка", async (ctx) => {
   const ticketId = "T-" + crypto.randomBytes(4).toString("hex").toUpperCase();
   await createTicket(ticketId, userId);
 
-  ctx.reply(
+  // Связка с админ-ботом (опционально)
+  if (ADMIN_BOT_URL) {
+    try {
+      await fetch(`${ADMIN_BOT_URL}/new-ticket`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ticketId, userId }),
+      });
+    } catch (e) {
+      console.error("Notify admin bot (new-ticket) error:", e.message);
+    }
+  }
+
+  await ctx.reply(
     `Создан тикет: ${ticketId}\n` +
     "Опиши свою проблему одним или несколькими сообщениями."
   );
@@ -122,18 +135,36 @@ bot.on("text", async (ctx) => {
   const userId = ctx.from.id;
   const text = ctx.message.text.trim();
 
-  // Кнопки НЕ должны попадать в поддержку
+  // Кнопки не должны попадать в обработчик как обычный текст
   const buttons = ["🛠 Поддержка", "💳 Купить VPN", "🎟 Промокод", "🔑 Мои ключи"];
   if (buttons.includes(text)) return;
 
-  // 1. Если есть открытый тикет — отправляем сообщение в поддержку
+  // 1. Если есть открытый тикет — считаем текст сообщением в поддержку
   const ticket = await getUserOpenTicket(userId);
   if (ticket) {
     await addUserMessage(ticket.ticket_id, text);
+
+    // Связка с админ-ботом (опционально)
+    if (ADMIN_BOT_URL) {
+      try {
+        await fetch(`${ADMIN_BOT_URL}/ticket-message`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ticketId: ticket.ticket_id,
+            userId,
+            text,
+          }),
+        });
+      } catch (e) {
+        console.error("Notify admin bot (ticket-message) error:", e.message);
+      }
+    }
+
     return ctx.reply("Сообщение отправлено в поддержку. Ожидай ответа администратора.");
   }
 
-  // 2. Промокод
+  // 2. Промокод (если это не кнопка и нет тикета)
   if (/^[A-Za-z0-9]{3,32}$/.test(text)) {
     const code = text.toUpperCase();
     const promo = await getPromocode(code);
@@ -158,7 +189,7 @@ bot.on("text", async (ctx) => {
     }
   }
 
-  // 3. Просто текст — игнорируем
+  // 3. Остальной текст — игнорируем
 });
 
 
@@ -166,7 +197,7 @@ bot.on("text", async (ctx) => {
 // Покупка VPN
 // ===============================
 bot.hears("💳 Купить VPN", async (ctx) => {
-  ctx.reply(
+  await ctx.reply(
     "Выбери тариф:",
     Markup.inlineKeyboard([
       [Markup.button.callback("30 дней — 299₽", "buy_30")],
@@ -203,11 +234,11 @@ bot.action(/buy_(.+)/, async (ctx) => {
       "После оплаты бот автоматически выдаст VPN‑ключ."
     );
 
-    ctx.answerCbQuery("Ссылка на оплату отправлена.");
+    await ctx.answerCbQuery("Ссылка на оплату отправлена.");
   } catch (e) {
     console.error("createPayment error:", e.message);
-    ctx.answerCbQuery("Ошибка создания платежа.");
-    ctx.reply("Не удалось создать платёж. Попробуй позже.");
+    await ctx.answerCbQuery("Ошибка создания платежа.");
+    await ctx.reply("Не удалось создать платёж. Попробуй позже.");
   }
 });
 
@@ -236,7 +267,7 @@ bot.hears("🔑 Мои ключи", async (ctx) => {
       `Трафик: ${k.traffic}\n\n`;
   }
 
-  ctx.reply(text);
+  await ctx.reply(text);
 });
 
 
@@ -317,7 +348,7 @@ async function deliverAdminMessages() {
 // ===============================
 // Webhook + сервер
 // ===============================
-bot.telegram.setWebhook(WEBHOOK_URL);
+bot.telegram.setWebhook(WEBHOOK_URL_CLIENT);
 
 app.post("/webhook", (req, res) => {
   bot.handleUpdate(req.body)

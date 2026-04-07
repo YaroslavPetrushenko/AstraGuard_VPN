@@ -1,89 +1,136 @@
 const { pool } = require("./db");
 
-/**
- * Получить промокод по коду
- * @param {string} code
- * @returns {Promise<object|null>}
- */
+// Клиентский бот
 async function getPromocode(code) {
   const res = await pool.query(
     `
     SELECT code, discount, uses_left
     FROM promocodes
-    WHERE code = $1
-    LIMIT 1
+    WHERE code = $1;
     `,
     [code]
   );
-
   return res.rows[0] || null;
 }
 
-/**
- * Проверить, использовал ли пользователь промокод
- * @param {number} userId
- * @param {string} code
- * @returns {Promise<boolean>}
- */
 async function hasUserUsedPromo(userId, code) {
   const res = await pool.query(
     `
-    SELECT 1
-    FROM promo_usage
-    WHERE user_id = $1 AND code = $2
-    LIMIT 1
+    SELECT id
+    FROM promo_usages
+    WHERE user_id = $1
+      AND code = $2
+    LIMIT 1;
     `,
     [userId, code]
   );
-
-  return res.rowCount > 0;
+  return res.rows.length > 0;
 }
 
-/**
- * Отметить использование промокода
- * @param {number} userId
- * @param {string} code
- */
 async function markPromoUsed(userId, code) {
-  // записываем факт использования
-  await pool.query(
-    `
-    INSERT INTO promo_usage (user_id, code, used_at)
-    VALUES ($1, $2, NOW())
-    ON CONFLICT DO NOTHING
-    `,
-    [userId, code]
-  );
+  await pool.query("BEGIN");
 
-  // уменьшаем количество оставшихся использований
-  await pool.query(
-    `
-    UPDATE promocodes
-    SET uses_left = uses_left - 1
-    WHERE code = $1 AND uses_left > 0
-    `,
-    [code]
-  );
+  try {
+    const promoRes = await pool.query(
+      `
+      SELECT code, uses_left
+      FROM promocodes
+      WHERE code = $1
+      FOR UPDATE;
+      `,
+      [code]
+    );
+
+    const promo = promoRes.rows[0];
+    if (!promo || promo.uses_left <= 0) {
+      await pool.query("ROLLBACK");
+      return null;
+    }
+
+    await pool.query(
+      `
+      INSERT INTO promo_usages (user_id, code)
+      VALUES ($1, $2)
+      ON CONFLICT (user_id, code) DO NOTHING;
+      `,
+      [userId, code]
+    );
+
+    const usageRes = await pool.query(
+      `
+      SELECT id
+      FROM promo_usages
+      WHERE user_id = $1
+        AND code = $2;
+      `,
+      [userId, code]
+    );
+
+    if (!usageRes.rows.length) {
+      await pool.query("ROLLBACK");
+      return null;
+    }
+
+    await pool.query(
+      `
+      UPDATE promocodes
+      SET uses_left = uses_left - 1
+      WHERE code = $1;
+      `,
+      [code]
+    );
+
+    await pool.query("COMMIT");
+    return true;
+  } catch (e) {
+    await pool.query("ROLLBACK");
+    throw e;
+  }
 }
 
-/**
- * Получить все промокоды (если понадобится в клиенте)
- */
+// Админ-бот
 async function getAllPromocodes() {
   const res = await pool.query(
     `
-    SELECT code, discount, uses_left
+    SELECT code, discount, uses_left, created_at
     FROM promocodes
-    ORDER BY code ASC
+    ORDER BY created_at DESC;
     `
   );
-
   return res.rows;
+}
+
+async function createPromocode(code, discount, usesLeft) {
+  const res = await pool.query(
+    `
+    INSERT INTO promocodes (code, discount, uses_left)
+    VALUES ($1, $2, $3)
+    ON CONFLICT (code) DO NOTHING
+    RETURNING *;
+    `,
+    [code, discount, usesLeft]
+  );
+  return res.rows[0] || null;
+}
+
+async function deletePromocode(code) {
+  const res = await pool.query(
+    `
+    DELETE FROM promocodes
+    WHERE code = $1
+    RETURNING *;
+    `,
+    [code]
+  );
+  return res.rows[0] || null;
 }
 
 module.exports = {
   getPromocode,
   hasUserUsedPromo,
   markPromoUsed,
+
   getAllPromocodes,
+  createPromocode,
+  deletePromocode,
 };
