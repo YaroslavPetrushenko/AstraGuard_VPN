@@ -33,7 +33,11 @@ const {
 
 const express = require("express");
 const app = express();
+
+// Telegram шлёт webhook как x-www-form-urlencoded
+app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
+
 
 const bot = new Telegraf(BOT_TOKEN);
 
