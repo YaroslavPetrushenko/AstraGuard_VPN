@@ -336,9 +336,6 @@ async function deliverAdminMessages() {
 // ===============================
 // Запуск бота
 // ===============================
-// Telegram шлёт webhook как x-www-form-urlencoded
-app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
 
 // Health-check для Railway
 app.get("/", (req, res) => res.send("OK"));
