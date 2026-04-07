@@ -23,7 +23,7 @@ async function createPayment(userId, days, amount) {
     {
       headers: {
         "Content-Type": "application/json",
-        "X-Api-Key": ANYPAY_API_KEY,
+        "X-API-KEY": ANYPAY_API_KEY,
       },
       timeout: 10000,
     }
