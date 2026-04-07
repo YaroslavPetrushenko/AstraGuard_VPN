@@ -337,12 +337,18 @@ setInterval(deliverAdminMessages, 3000);
 // ===============================
 // Запуск бота
 // ===============================
+// Webhook endpoint
 bot.telegram.setWebhook("https://astraguardvpn-production.up.railway.app/webhook");
 app.use(bot.webhookCallback("/webhook"));
 
+// Health-check для Railway
+app.get("/", (req, res) => res.send("OK"));
+
+// Запуск сервера
 app.listen(process.env.PORT || 3000, () => {
   console.log("Client bot running via webhook");
 });
+
 
 
 process.once("SIGINT", () => bot.stop("SIGINT"));
