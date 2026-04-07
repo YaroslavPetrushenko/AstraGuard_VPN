@@ -343,7 +343,7 @@ app.use(express.json());
 // Health-check для Railway
 app.get("/", (req, res) => res.send("OK"));
 
-// Webhook endpoint — ВАЖНО: ПОСЛЕ всех middleware
+// Webhook endpoint — единственный
 app.post("/webhook", (req, res) => {
   bot.handleUpdate(req.body, res);
 });
@@ -356,10 +356,9 @@ app.listen(process.env.PORT || 3000, () => {
   console.log("Client bot running via webhook");
 });
 
-// Фоновые задачи — ТОЛЬКО ПОСЛЕ запуска сервера
+// Фоновые задачи — только после запуска сервера
 setInterval(processPayments, 5000);
 setInterval(deliverAdminMessages, 3000);
 
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
-
