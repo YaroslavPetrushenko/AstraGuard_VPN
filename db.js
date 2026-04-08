@@ -1,95 +1,35 @@
-const { Pool } = require("pg");
-const { DATABASE_URL } = require("./config");
+const sqlite3 = require("sqlite3").verbose();
+const db = new sqlite3.Database("./database.db");
 
-const pool = new Pool({
-  connectionString: DATABASE_URL,
-  ssl: process.env.PGSSL === "disable" ? false : { rejectUnauthorized: false },
+db.serialize(() => {
+    db.run(`CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY,
+        username TEXT,
+        referrer INTEGER,
+        created_at TEXT
+    )`);
+
+    db.run(`CREATE TABLE IF NOT EXISTS keys (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        key TEXT,
+        expires_at TEXT,
+        is_trial INTEGER
+    )`);
+
+    db.run(`CREATE TABLE IF NOT EXISTS referrals (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        invited_id INTEGER
+    )`);
+
+    db.run(`CREATE TABLE IF NOT EXISTS tickets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        message TEXT,
+        from_admin INTEGER,
+        created_at TEXT
+    )`);
 });
 
-async function initSchema() {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS users (
-      user_id BIGINT PRIMARY KEY,
-      username TEXT,
-      first_name TEXT,
-      last_name TEXT,
-      created_at TIMESTAMPTZ DEFAULT NOW()
-    );
-  `);
-
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS tickets (
-      ticket_id TEXT PRIMARY KEY,
-      user_id BIGINT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
-      status TEXT NOT NULL DEFAULT 'open', -- open | closed
-      assigned_admin BIGINT,
-      notified BOOLEAN DEFAULT FALSE,
-      created_at TIMESTAMPTZ DEFAULT NOW()
-    );
-  `);
-
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS messages (
-      id SERIAL PRIMARY KEY,
-      ticket_id TEXT NOT NULL REFERENCES tickets(ticket_id) ON DELETE CASCADE,
-      sender TEXT NOT NULL, -- 'user' | 'admin'
-      text TEXT NOT NULL,
-      admin_id BIGINT,
-      delivered BOOLEAN DEFAULT FALSE,
-      created_at TIMESTAMPTZ DEFAULT NOW()
-    );
-  `);
-
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS promocodes (
-      code TEXT PRIMARY KEY,
-      discount INTEGER NOT NULL,
-      uses_left INTEGER NOT NULL,
-      created_at TIMESTAMPTZ DEFAULT NOW()
-    );
-  `);
-
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS promo_usages (
-      id SERIAL PRIMARY KEY,
-      user_id BIGINT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
-      code TEXT NOT NULL REFERENCES promocodes(code) ON DELETE CASCADE,
-      used_at TIMESTAMPTZ DEFAULT NOW(),
-      UNIQUE (user_id, code)
-    );
-  `);
-
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS payments (
-      id SERIAL PRIMARY KEY,
-      user_id BIGINT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
-      days INTEGER NOT NULL,
-      amount INTEGER NOT NULL,
-      pay_id TEXT,
-      pay_url TEXT,
-      status TEXT NOT NULL DEFAULT 'pending', -- pending | paid | canceled | error
-      created_at TIMESTAMPTZ DEFAULT NOW()
-    );
-  `);
-
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS vpn_keys (
-      id SERIAL PRIMARY KEY,
-      user_id BIGINT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
-      key TEXT NOT NULL,
-      days INTEGER NOT NULL,
-      devices INTEGER NOT NULL DEFAULT 1,
-      traffic TEXT NOT NULL DEFAULT 'unlimited',
-      expires_at TIMESTAMPTZ NOT NULL,
-      active BOOLEAN NOT NULL DEFAULT TRUE,
-      created_at TIMESTAMPTZ DEFAULT NOW()
-    );
-  `);
-
-  console.log("[DB] Схема инициализирована");
-}
-
-module.exports = {
-  pool,
-  initSchema,
-};
+module.exports = db;
