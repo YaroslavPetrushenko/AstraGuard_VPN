@@ -1,17 +1,23 @@
 module.exports = {
-    BOT_TOKEN: "8524463400:AAHXm2_YpkdXg8lY9aa8fZ_5ZTWwyUiB9HE",
+    BOT_TOKEN: process.env.BOT_TOKEN,
 
     ADMINS: [
-        6784875182, // Ярослав
-        8398980713  // Ната
+        6784875182, // ты
+        // 8398980713, // Ната, если нужно
     ],
 
     HIDDIFY: {
-        BASE_URL: "https://IP_ТВОЕГО_VPS",
-        TOKEN: "ТОКЕН_ИЗ_HIDDIFY"
+        BASE_URL: process.env.HIDDIFY_URL,
+        TOKEN: process.env.HIDDIFY_TOKEN
+    },
+
+    ANYPAY: {
+        PROJECT_ID: 17515,                 // ID проекта (магазина)
+        API_ID: "6UQFFQBVEOTVG5ZO8U",      // API ID
+        API_KEY: "nuEz9Z...ОБРЕЖЬ_ТУТ..."  // В КОД НЕ ПИШИ, ВЫНЕСИ В ENV
     },
 
     TRIAL_HOURS: 24,
-    VPN_PRICE: 100,
+    VPN_PRICE_BASE: 100,      // базовая цена за 30 дней
     REF_BONUS_DAYS: 3
 };

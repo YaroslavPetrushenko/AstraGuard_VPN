@@ -44,4 +44,56 @@ CREATE TABLE IF NOT EXISTS tickets (
 )
 `).run();
 
+// PROMOCODES
+db.prepare(`
+CREATE TABLE IF NOT EXISTS promocodes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT UNIQUE,
+    discount INTEGER,
+    usage_limit INTEGER,
+    used INTEGER DEFAULT 0
+)
+`).run();
+
+// PROMO USAGE (кто уже использовал)
+db.prepare(`
+CREATE TABLE IF NOT EXISTS promo_usage (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    promo_id INTEGER
+)
+`).run();
+
+// PAYMENTS (AnyPay)
+db.prepare(`
+CREATE TABLE IF NOT EXISTS payments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    amount INTEGER,
+    promo_id INTEGER,
+    status TEXT,
+    anypay_invoice_id TEXT,
+    created_at TEXT
+)
+`).run();
+
+db.prepare(`
+CREATE TABLE IF NOT EXISTS referrals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    invited_id INTEGER,
+    created_at TEXT
+)
+`).run();
+
+db.prepare(`
+CREATE TABLE IF NOT EXISTS ref_bonus (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    days INTEGER,
+    created_at TEXT
+)
+`).run();
+
+
 module.exports = db;

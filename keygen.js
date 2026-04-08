@@ -18,6 +18,18 @@ module.exports = {
     },
 
     async givePaid(userId, days = 30) {
+
+        // --- ДОБАВЛЯЕМ БОНУСНЫЕ ДНИ ---
+        const bonus = db.prepare(`
+            SELECT SUM(days) AS d FROM ref_bonus WHERE user_id = ?
+        `).get(userId).d || 0;
+
+        days += bonus;
+
+        // очищаем бонусы после использования
+        db.prepare(`DELETE FROM ref_bonus WHERE user_id = ?`).run(userId);
+
+        // --- СОЗДАЁМ КЛЮЧ ---
         const key = await hiddify.create(days);
 
         db.prepare(`
