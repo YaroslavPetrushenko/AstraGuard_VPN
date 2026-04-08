@@ -62,4 +62,3 @@ module.exports = function(bot) {
         ctx.reply("Рассылка отправлена.");
     });
 };
-ы
