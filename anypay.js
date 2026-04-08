@@ -1,59 +1,67 @@
 const crypto = require("crypto");
-const axios = require("axios");
 const db = require("./db");
 const { ANYPAY } = require("./config");
 
-function createSign(params) {
-    // ВАЖНО: формулу подписи возьми из доки AnyPay v3.
-    // Здесь просто каркас:
-    const str = `${ANYPAY.PROJECT_ID}:${params.amount}:${ANYPAY.API_KEY}:${params.pay_id}`;
-    return crypto.createHash("sha256").update(str).digest("hex");
+// --- Генерация подписи ---
+function makeSign({ merchant_id, pay_id, amount, currency, secret }) {
+    const str = `${merchant_id}${pay_id}${amount}${currency}${secret}`;
+    return crypto.createHash("md5").update(str).digest("hex");
+}
+
+// --- Создание ссылки на оплату ---
+function createInvoice(userId, amount, promoId = null) {
+    const currency = "RUB";
+
+    // invoice_id = уникальный ID платежа
+    const invoice_id = `${userId}_${Date.now()}`;
+
+    const sign = makeSign({
+        merchant_id: ANYPAY.PROJECT_ID,
+        pay_id: invoice_id,
+        amount,
+        currency,
+        secret: ANYPAY.SECRET_KEY
+    });
+
+    const url =
+        `https://anypay.io/merchant?merchant_id=${ANYPAY.PROJECT_ID}` +
+        `&pay_id=${invoice_id}` +
+        `&amount=${amount}` +
+        `&currency=${currency}` +
+        `&sign=${sign}`;
+
+    // сохраняем в БД
+    db.prepare(`
+        CREATE TABLE IF NOT EXISTS payments (
+            invoice_id TEXT PRIMARY KEY,
+            user_id INTEGER,
+            amount INTEGER,
+            promo_id INTEGER,
+            paid INTEGER DEFAULT 0,
+            created_at TEXT
+        )
+    `).run();
+
+    db.prepare(`
+        INSERT INTO payments (invoice_id, user_id, amount, promo_id, created_at)
+        VALUES (?, ?, ?, ?, datetime('now'))
+    `).run(invoice_id, userId, amount, promoId);
+
+    return { invoice_id, url };
+}
+
+// --- Получить платёж ---
+function getPaymentByInvoice(invoice_id) {
+    return db.prepare(`SELECT * FROM payments WHERE invoice_id = ?`).get(invoice_id);
+}
+
+// --- Пометить как оплаченный ---
+function markPaid(invoice_id) {
+    db.prepare(`UPDATE payments SET paid = 1 WHERE invoice_id = ?`).run(invoice_id);
 }
 
 module.exports = {
-    async createInvoice(userId, amount, promoId = null) {
-        const pay_id = `${userId}_${Date.now()}`;
-
-        const sign = createSign({ amount, pay_id });
-
-        // URL и поля уточни по доке AnyPay
-        const payload = {
-            project_id: ANYPAY.PROJECT_ID,
-            api_id: ANYPAY.API_ID,
-            pay_id,
-            amount,
-            currency: "RUB",
-            desc: "Оплата VPN",
-            sign
-        };
-
-        // Пример: const res = await axios.post("https://anypay.io/api/v3/invoice/create", payload);
-        // const invoice = res.data;
-
-        // Пока без реального запроса — просто формируем ссылку:
-        const fakeInvoiceId = pay_id;
-        const paymentUrl = `https://anypay.io/merchant?merchant_id=${ANYPAY.PROJECT_ID}&pay_id=${pay_id}&amount=${amount}`;
-
-        db.prepare(`
-            INSERT INTO payments (user_id, amount, promo_id, status, anypay_invoice_id, created_at)
-            VALUES (?, ?, ?, 'pending', ?, datetime('now'))
-        `).run(userId, amount, promoId, fakeInvoiceId);
-
-        return {
-            url: paymentUrl,
-            invoice_id: fakeInvoiceId
-        };
-    },
-
-    async markPaid(invoiceId) {
-        db.prepare(`
-            UPDATE payments SET status = 'paid' WHERE anypay_invoice_id = ?
-        `).run(invoiceId);
-    },
-
-    getPaymentByInvoice(invoiceId) {
-        return db.prepare(`
-            SELECT * FROM payments WHERE anypay_invoice_id = ?
-        `).get(invoiceId);
-    }
+    createInvoice,
+    getPaymentByInvoice,
+    markPaid
 };
