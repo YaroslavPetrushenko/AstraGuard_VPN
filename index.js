@@ -4,7 +4,7 @@ const keygen = require("./keygen");
 const adminCommands = require("./admin");
 const promo = require("./promo");
 const anypay = require("./anypay");
-const { BOT_TOKEN, ADMINS, VPN_PRICE_BASE } = require("./config");
+const { BOT_TOKEN, ADMINS, VPN_PRICE_BASE, REF_BONUS_DAYS } = require("./config");
 const { isAdmin } = require("./utils");
 
 const bot = new Telegraf(BOT_TOKEN);
