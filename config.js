@@ -1,5 +1,5 @@
 module.exports = {
-    BOT_TOKEN: "ТОКЕН_БОТА",
+    BOT_TOKEN: "8524463400:AAHXm2_YpkdXg8lY9aa8fZ_5ZTWwyUiB9HE",
 
     ADMINS: [
         6784875182, // Ярослав
