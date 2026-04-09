@@ -64,19 +64,6 @@ CREATE TABLE IF NOT EXISTS promo_usage (
 )
 `).run();
 
-// PAYMENTS (AnyPay)
-db.prepare(`
-CREATE TABLE IF NOT EXISTS payments (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER,
-    amount INTEGER,
-    promo_id INTEGER,
-    status TEXT,
-    anypay_invoice_id TEXT,
-    created_at TEXT
-)
-`).run();
-
 db.prepare(`
 CREATE TABLE IF NOT EXISTS referrals (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
