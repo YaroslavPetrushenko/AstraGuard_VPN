@@ -3,16 +3,16 @@ const db = require("./db");
 const { ANYPAY } = require("./config");
 
 // --- Генерация подписи ---
-function makeSign({ merchant_id, pay_id, amount, currency, secret }) {
-    const str = `${merchant_id}${pay_id}${amount}${currency}${secret}`;
+function makeSign({ merchant_id, pay_id, amount, currency, desc, secret }) {
+    const str = `${merchant_id}${pay_id}${amount}${currency}${desc}${secret}`;
     return crypto.createHash("sha256").update(str).digest("hex");
 }
 
 // --- Создание ссылки на оплату ---
 function createInvoice(userId, amount, promoId = null) {
     const currency = "RUB";
+    const desc = "VPN"; // ОБЯЗАТЕЛЬНОЕ ОПИСАНИЕ
 
-    // invoice_id = уникальный ID платежа
     const invoice_id = `${userId}_${Date.now()}`;
 
     const sign = makeSign({
@@ -20,6 +20,7 @@ function createInvoice(userId, amount, promoId = null) {
         pay_id: invoice_id,
         amount,
         currency,
+        desc,
         secret: ANYPAY.SECRET_KEY
     });
 
@@ -28,6 +29,7 @@ function createInvoice(userId, amount, promoId = null) {
         `&pay_id=${invoice_id}` +
         `&amount=${amount}` +
         `&currency=${currency}` +
+        `&desc=${encodeURIComponent(desc)}` +
         `&sign=${sign}`;
 
     // сохраняем в БД
@@ -50,12 +52,10 @@ function createInvoice(userId, amount, promoId = null) {
     return { invoice_id, url };
 }
 
-// --- Получить платёж ---
 function getPaymentByInvoice(invoice_id) {
     return db.prepare(`SELECT * FROM payments WHERE invoice_id = ?`).get(invoice_id);
 }
 
-// --- Пометить как оплаченный ---
 function markPaid(invoice_id) {
     db.prepare(`UPDATE payments SET paid = 1 WHERE invoice_id = ?`).run(invoice_id);
 }
