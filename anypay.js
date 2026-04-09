@@ -5,7 +5,7 @@ const { ANYPAY } = require("./config");
 // --- Генерация подписи ---
 function makeSign({ merchant_id, pay_id, amount, currency, secret }) {
     const str = `${merchant_id}${pay_id}${amount}${currency}${secret}`;
-    return crypto.createHash("md5").update(str).digest("hex");
+    return crypto.createHash("sha256").update(str).digest("hex");
 }
 
 // --- Создание ссылки на оплату ---
