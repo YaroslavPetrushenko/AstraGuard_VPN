@@ -145,10 +145,13 @@ bot.on("text", async (ctx, next) => {
   const text = ctx.message.text;
   const userId = ctx.from.id;
 
-  // --- если админ — пропускаем ---
+  // очищаем покупку при любом сообщении
+  db.prepare(`DELETE FROM purchases WHERE user_id = ?`).run(userId);
+
+  // если админ — пропускаем
   if (isAdmin(userId)) return next();
 
-  // --- если пользователь отвечает админу ---
+  // если пользователь отвечает админу
   const wait = db.prepare(`SELECT * FROM reply_wait WHERE user_id = ?`).get(userId);
   if (wait) {
     db.prepare(`DELETE FROM reply_wait WHERE user_id = ?`).run(userId);
@@ -166,46 +169,7 @@ bot.on("text", async (ctx, next) => {
     return ctx.reply("Сообщение отправлено.", mainMenu());
   }
 
-  // --- если это промокод ---
-  const purchase = db.prepare(`SELECT * FROM purchases WHERE user_id = ?`).get(userId);
-
-  if (purchase) {
-    const code = text.trim();
-    const p = promo.getPromoByName(code);
-
-    if (!p) {
-      return ctx.reply(
-        "Такого промокода нет.",
-        Markup.inlineKeyboard([[Markup.button.callback("Пропустить", "promo_skip")]])
-      );
-    }
-
-    if (!promo.canUsePromo(p)) {
-      return ctx.reply(
-        "Лимит использования промокода исчерпан.",
-        Markup.inlineKeyboard([[Markup.button.callback("Пропустить", "promo_skip")]])
-      );
-    }
-
-    if (promo.hasUserUsedPromo(userId, p.id)) {
-      return ctx.reply(
-        "Ты уже использовал этот промокод.",
-        Markup.inlineKeyboard([[Markup.button.callback("Пропустить", "promo_skip")]])
-      );
-    }
-
-    const discounted = Math.max(1, Math.round(purchase.base_price * (100 - p.discount) / 100));
-    promo.markPromoUsed(userId, p.id);
-
-    const codePay = yoomoney.createPayment(userId, discounted, purchase.days);
-
-    return ctx.reply(
-      `Промокод применён! Новая цена: *${discounted}₽*\n\nПереведи *${discounted}₽* на кошелёк:\n\`${YOOMONEY_WALLET}\`\n\nКомментарий:\n\`${codePay}\`\n\nПосле оплаты отправь чек.`,
-      { parse_mode: "Markdown" }
-    );
-  }
-
-  // --- обычное сообщение в поддержку ---
+  // обычное сообщение в поддержку
   support.saveUserMessage(userId, text);
 
   ADMINS.forEach(a => {
@@ -226,6 +190,9 @@ bot.action("support", async (ctx) => {
 
 bot.action("support_write", async (ctx) => {
   await ctx.answerCbQuery();
+
+  db.prepare(`DELETE FROM purchases WHERE user_id = ?`).run(ctx.from.id);
+
   ctx.reply("✏ Напиши сообщение, и админ ответит.");
 });
 
