@@ -388,36 +388,27 @@ bot.action("support", async (ctx) => {
 
   const userId = ctx.from.id;
 
-  // Если пользователь — обычный
   if (!isAdmin(userId)) {
     return ctx.reply("🛠 Выбери действие:", supportMenu());
   }
 
-  // Если админ — показываем список тикетов
-  const tickets = db.prepare(`
-    SELECT * FROM tickets
-    ORDER BY id DESC
-  `).all();
+  const tickets = db.prepare(`SELECT * FROM tickets ORDER BY id DESC`).all();
 
   if (tickets.length === 0) {
     return ctx.reply("📭 Активных тикетов нет.");
   }
 
   for (const t of tickets) {
-    const user = { id: t.user_id };
-    const adminUser = { id: t.admin_id };
-
-    const text = buildTicketCardText(t, user, adminUser);
-
     await ctx.reply(
-      text,
-      {
-        parse_mode: "Markdown",
-        ...ticketAdminKeyboard(t, userId)
-      }
+      `Тикет #${t.id} — ${t.status === "open" ? "свободен" : "занят"}`,
+      Markup.inlineKeyboard([
+        [Markup.button.callback("Открыть", `ticket_open_${t.id}`)]
+      ])
     );
   }
 });
+
+
 
 
 bot.action("support_write", async (ctx) => {
@@ -575,6 +566,30 @@ bot.action(/ticket_busy_(\d+)/, async (ctx) => {
   await ctx.answerCbQuery("Тикет уже занят другим админом.");
 });
 
+bot.action(/ticket_open_(\d+)/, async (ctx) => {
+  await ctx.answerCbQuery();
+
+  const ticketId = Number(ctx.match[1]);
+  const ticket = getTicketById(ticketId);
+  if (!ticket) return ctx.reply("Тикет не найден.");
+
+  const user = { id: ticket.user_id };
+  const adminUser = { id: ticket.admin_id };
+
+  const text = buildTicketCardText(ticket, user, adminUser);
+
+  const msg = await ctx.reply(
+    text,
+    {
+      parse_mode: "Markdown",
+      ...ticketAdminKeyboard(ticket, ctx.from.id)
+    }
+  );
+
+  saveTicketAdminMessage(ticket.id, ctx.from.id, msg.message_id);
+});
+
+
 // Админ закрывает тикет
 bot.action(/ticket_close_(\d+)/, async (ctx) => {
   await ctx.answerCbQuery();
@@ -627,20 +642,19 @@ bot.action(/ticket_close_(\d+)/, async (ctx) => {
 
 // ---------------- ОТВЕТ АДМИНА РЕПЛАЕМ ----------------
 
+// ---------------- ОТВЕТ АДМИНА РЕПЛАЕМ ----------------
+
 bot.on("message", async (ctx, next) => {
   const fromId = ctx.from.id;
 
-  // Если не админ — пропускаем дальше (это уже обработано в on("text"))
   if (!isAdmin(fromId)) {
     return next();
   }
 
-  // Нас интересуют только текстовые сообщения админа
   if (!ctx.message || !ctx.message.text) {
     return next();
   }
 
-  // Должен быть reply_to_message, чтобы понять, к какому тикету относится
   const reply = ctx.message.reply_to_message;
   if (!reply || !reply.text) {
     return next();
@@ -648,35 +662,30 @@ bot.on("message", async (ctx, next) => {
 
   const text = ctx.message.text;
 
-  // Пытаемся вытащить номер тикета из текста реплая
-  const match = reply.text.match(/Тикет\s*#(\d+)/);
-  if (!match) {
-    // Возможно, это уведомление вида "Новое сообщение в тикете #123..."
-    const match2 = reply.text.match(/тикете\s*#(\d+)/i);
-    if (!match2) {
-      return next();
-    }
-    match2[1] && (match[1] = match2[1]);
-  }
+  let ticketId = null;
 
-  const ticketId = Number(match[1]);
-  if (!ticketId) {
-    return next();
-  }
+  const m1 = reply.text.match(/Тикет\s*#(\d+)/i);
+  const m2 = reply.text.match(/тикете\s*#(\d+)/i);
+  const m3 = reply.text.match(/тикет\s*#(\d+)/i);
+  const m4 = reply.text.match(/#(\d+)/);
 
+  if (m1) ticketId = Number(m1[1]);
+  else if (m2) ticketId = Number(m2[1]);
+  else if (m3) ticketId = Number(m3[1]);
+  else if (m4) ticketId = Number(m4[1]);
+
+  if (!ticketId) return next();
+
+  // ❗ ВОТ ЭТОГО НЕ ХВАТАЛО
   const ticket = getTicketById(ticketId);
-  if (!ticket) {
-    return ctx.reply(`Тикет #${ticketId} уже не существует.`);
-  }
+  if (!ticket) return ctx.reply(`Тикет #${ticketId} уже не существует.`);
 
   if (ticket.admin_id !== fromId) {
     return ctx.reply("Ответить по тикету может только админ, который его взял.");
   }
 
-  // Добавляем сообщение админа в историю
   addTicketMessage(ticketId, "admin", fromId, text);
 
-  // Отправляем пользователю
   try {
     await bot.telegram.sendMessage(
       ticket.user_id,
@@ -687,11 +696,9 @@ bot.on("message", async (ctx, next) => {
     console.error("Не удалось отправить ответ пользователю по тикету", e.message);
   }
 
-  // Обновляем карточки у админов
   await refreshTicketCardsForAdmins(bot, ticket);
-
-  // Админу можно ничего не отвечать, он и так видит свой текст
 });
+
 
 // ---------------- РЕФЕРАЛКА ----------------
 
