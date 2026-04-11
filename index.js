@@ -647,21 +647,19 @@ bot.action(/ticket_close_(\d+)/, async (ctx) => {
 bot.on("message", async (ctx, next) => {
   const fromId = ctx.from.id;
 
-  if (!isAdmin(fromId)) {
-    return next();
-  }
+  // Только админ
+  if (!isAdmin(fromId)) return next();
 
-  if (!ctx.message || !ctx.message.text) {
-    return next();
-  }
+  // Только текст
+  if (!ctx.message || !ctx.message.text) return next();
 
+  // Должен быть реплай
   const reply = ctx.message.reply_to_message;
-  if (!reply || !reply.text) {
-    return next();
-  }
+  if (!reply || !reply.text) return next();
 
   const text = ctx.message.text;
 
+  // Ищем ID тикета
   let ticketId = null;
 
   const m1 = reply.text.match(/Тикет\s*#(\d+)/i);
@@ -676,7 +674,7 @@ bot.on("message", async (ctx, next) => {
 
   if (!ticketId) return next();
 
-  // ❗ ВОТ ЭТОГО НЕ ХВАТАЛО
+  // ❗ ВОТ ЭТОГО НЕ ХВАТАЛО — ЭТО ГЛАВНАЯ ПРИЧИНА
   const ticket = getTicketById(ticketId);
   if (!ticket) return ctx.reply(`Тикет #${ticketId} уже не существует.`);
 
@@ -684,8 +682,10 @@ bot.on("message", async (ctx, next) => {
     return ctx.reply("Ответить по тикету может только админ, который его взял.");
   }
 
+  // Добавляем сообщение админа в историю
   addTicketMessage(ticketId, "admin", fromId, text);
 
+  // Отправляем пользователю
   try {
     await bot.telegram.sendMessage(
       ticket.user_id,
@@ -696,8 +696,10 @@ bot.on("message", async (ctx, next) => {
     console.error("Не удалось отправить ответ пользователю по тикету", e.message);
   }
 
+  // Обновляем карточки у админов
   await refreshTicketCardsForAdmins(bot, ticket);
 });
+
 
 
 // ---------------- РЕФЕРАЛКА ----------------
