@@ -385,8 +385,40 @@ attachCheckHandler(bot, mainMenu);
 
 bot.action("support", async (ctx) => {
   await ctx.answerCbQuery();
-  ctx.reply("🛠 Выбери действие:", supportMenu());
+
+  const userId = ctx.from.id;
+
+  // Если пользователь — обычный
+  if (!isAdmin(userId)) {
+    return ctx.reply("🛠 Выбери действие:", supportMenu());
+  }
+
+  // Если админ — показываем список тикетов
+  const tickets = db.prepare(`
+    SELECT * FROM tickets
+    ORDER BY id DESC
+  `).all();
+
+  if (tickets.length === 0) {
+    return ctx.reply("📭 Активных тикетов нет.");
+  }
+
+  for (const t of tickets) {
+    const user = { id: t.user_id };
+    const adminUser = { id: t.admin_id };
+
+    const text = buildTicketCardText(t, user, adminUser);
+
+    await ctx.reply(
+      text,
+      {
+        parse_mode: "Markdown",
+        ...ticketAdminKeyboard(t, userId)
+      }
+    );
+  }
 });
+
 
 bot.action("support_write", async (ctx) => {
   await ctx.answerCbQuery();
