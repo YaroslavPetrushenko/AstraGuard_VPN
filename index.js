@@ -140,15 +140,43 @@ bot.action("promo_skip", async (ctx) => {
   );
 });
 
+// --- ОТВЕТ АДМИНА (ставим ВЫШЕ user-text, чтобы не мешать) ---
+bot.on("message", async (ctx, next) => {
+  if (!isAdmin(ctx.from.id)) return next();
+
+  if (!ctx.reply_to_message) return;
+
+  const m = ctx.reply_to_message.text && ctx.reply_to_message.text.match(/ID:(\d+)/);
+  if (!m) return;
+
+  const userId = Number(m[1]);
+  const text = ctx.message.text;
+
+  support.saveAdminReply(userId, text);
+
+  ctx.telegram.sendMessage(
+    userId,
+    `🛠 *Ответ поддержки:*\n${text}`,
+    {
+      parse_mode: "Markdown",
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: "✏ Ответить", callback_data: `support_reply_${ctx.from.id}` }],
+          [{ text: "❌ Закрыть", callback_data: "support_close" }]
+        ]
+      }
+    }
+  );
+});
+
 // --- ТЕКСТ: ТОЛЬКО РЕЖИМ ПОДДЕРЖКИ ---
 bot.on("text", async (ctx, next) => {
   const userId = ctx.from.id;
   const text = ctx.message.text;
 
-  // админов не трогаем — пусть идут дальше по цепочке
+  // админов пропускаем дальше
   if (isAdmin(userId)) return next();
 
-  // проверяем, есть ли активный режим ожидания
   const wait = db.prepare(`SELECT * FROM reply_wait WHERE user_id = ?`).get(userId);
 
   // если режима нет — игнор (как ты и хотел)
@@ -158,13 +186,13 @@ bot.on("text", async (ctx, next) => {
   support.saveUserMessage(userId, text);
 
   if (wait.admin_id) {
-    // это ответ конкретному админу
+    // ответ конкретному админу
     bot.telegram.sendMessage(
       wait.admin_id,
       `📩 Ответ от пользователя ID:${userId}:\n${text}`
     );
   } else {
-    // первое сообщение в поддержку — шлём всем админам
+    // первое сообщение — всем админам
     ADMINS.forEach(a => {
       bot.telegram.sendMessage(
         a,
@@ -193,10 +221,8 @@ bot.action("support_write", async (ctx) => {
 
   const userId = ctx.from.id;
 
-  // чистим старые режимы
   db.prepare(`DELETE FROM reply_wait WHERE user_id = ?`).run(userId);
 
-  // включаем режим ожидания первого сообщения
   db.prepare(`
     INSERT INTO reply_wait (user_id, admin_id)
     VALUES (?, NULL)
@@ -217,7 +243,6 @@ bot.action(/support_reply_(\d+)/, async (ctx) => {
   const adminId = Number(ctx.match[1]);
   const userId = ctx.from.id;
 
-  // включаем режим ответа именно этому админу
   db.prepare(`
     INSERT OR REPLACE INTO reply_wait (user_id, admin_id)
     VALUES (?, ?)
@@ -234,36 +259,6 @@ bot.action("support_close", async (ctx) => {
   db.prepare(`DELETE FROM reply_wait WHERE user_id = ?`).run(userId);
 
   ctx.editMessageText("Диалог закрыт. Если понадобится помощь — напиши снова.");
-});
-
-// --- ОТВЕТ АДМИНА ---
-bot.on("message", async (ctx) => {
-  if (!isAdmin(ctx.from.id)) return;
-
-  if (!ctx.reply_to_message) return;
-
-  // ищем ID пользователя в тексте, который мы сами же отправляли
-  const m = ctx.reply_to_message.text.match(/ID:(\d+)/);
-  if (!m) return;
-
-  const userId = Number(m[1]);
-  const text = ctx.message.text;
-
-  support.saveAdminReply(userId, text);
-
-  ctx.telegram.sendMessage(
-    userId,
-    `🛠 *Ответ поддержки:*\n${text}`,
-    {
-      parse_mode: "Markdown",
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: "✏ Ответить", callback_data: `support_reply_${ctx.from.id}` }],
-          [{ text: "❌ Закрыть", callback_data: "support_close" }]
-        ]
-      }
-    }
-  );
 });
 
 // --- РЕФЕРАЛКА ---
