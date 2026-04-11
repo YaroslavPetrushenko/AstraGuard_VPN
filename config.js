@@ -1,6 +1,6 @@
 module.exports = {
   BOT_TOKEN: "8524463400:AAHXm2_YpkdXg8lY9aa8fZ_5ZTWwyUiB9HE",
-  ADMINS: [6784875181], // id админов
+  ADMINS: [6784875182], // id админов
   YOOMONEY_WALLET: "4100XXXXXXXXXX",
   REF_BONUS_DAYS: 3,
 
