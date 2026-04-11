@@ -31,18 +31,41 @@ db.prepare(`
   )
 `).run();
 
-// tickets
+// 🔥 НОВАЯ ТАБЛИЦА TICKETS
 db.prepare(`
   CREATE TABLE IF NOT EXISTS tickets (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER,
-    message TEXT,
-    from_admin INTEGER,
-    created_at TEXT
+    user_id INTEGER NOT NULL,
+    admin_id INTEGER,
+    status TEXT NOT NULL, -- 'open' или 'taken'
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
   )
 `).run();
 
-// purchases (черновики)
+// 🔥 НОВАЯ ТАБЛИЦА ИСТОРИИ СООБЩЕНИЙ
+db.prepare(`
+  CREATE TABLE IF NOT EXISTS ticket_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticket_id INTEGER NOT NULL,
+    sender TEXT NOT NULL, -- 'user' или 'admin'
+    sender_id INTEGER NOT NULL,
+    text TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  )
+`).run();
+
+// 🔥 НОВАЯ ТАБЛИЦА КАРТОЧЕК ДЛЯ АДМИНОВ
+db.prepare(`
+  CREATE TABLE IF NOT EXISTS ticket_admin_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticket_id INTEGER NOT NULL,
+    admin_id INTEGER NOT NULL,
+    message_id INTEGER NOT NULL
+  )
+`).run();
+
+// purchases
 db.prepare(`
   CREATE TABLE IF NOT EXISTS purchases (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -66,6 +89,7 @@ db.prepare(`
   )
 `).run();
 
+// reply_wait (теперь не нужен, но можешь оставить)
 db.prepare(`
   CREATE TABLE IF NOT EXISTS reply_wait (
     user_id INTEGER PRIMARY KEY,
