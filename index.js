@@ -140,7 +140,7 @@ bot.action("promo_skip", async (ctx) => {
   );
 });
 
-// --- ТЕКСТ: ПРОМОКОД / САППОРТ / ОТВЕТ ПОЛЬЗОВАТЕЛЯ ---
+// --- ТЕКСТ: ПРОМОКОД / САППОРТ ---
 bot.on("text", async (ctx, next) => {
   const text = ctx.message.text;
   const userId = ctx.from.id;
@@ -169,9 +169,6 @@ bot.on("text", async (ctx, next) => {
     return ctx.reply("Сообщение отправлено.", mainMenu());
   }
 
-  // если пользователь НЕ отвечает админу — очищаем режим поддержки
-  db.prepare(`DELETE FROM reply_wait WHERE user_id = ?`).run(userId);
-
   // обычное сообщение в поддержку
   support.saveUserMessage(userId, text);
 
@@ -180,17 +177,6 @@ bot.on("text", async (ctx, next) => {
   });
 
   ctx.reply("Сообщение отправлено в поддержку.", mainMenu());
-});
-
-
-// обычное сообщение в поддержку
-support.saveUserMessage(userId, text);
-
-ADMINS.forEach(a => {
-  bot.telegram.sendMessage(a, `📩 Новое сообщение от ${userId}:\n${text}`);
-});
-
-ctx.reply("Сообщение отправлено в поддержку.", mainMenu());
 });
 
 // --- ПОЛУЧЕНИЕ ЧЕКОВ ---
