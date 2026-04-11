@@ -142,42 +142,27 @@ bot.action("promo_skip", async (ctx) => {
 
 // --- ТЕКСТ: ПРОМОКОД / САППОРТ ---
 bot.on("text", async (ctx, next) => {
-  const text = ctx.message.text;
   const userId = ctx.from.id;
+  const text = ctx.message.text;
 
-  // очищаем покупку при любом сообщении
-  db.prepare(`DELETE FROM purchases WHERE user_id = ?`).run(userId);
-
-  // если админ — пропускаем
   if (isAdmin(userId)) return next();
 
-  // если пользователь отвечает админу
   const wait = db.prepare(`SELECT * FROM reply_wait WHERE user_id = ?`).get(userId);
-  if (wait) {
-    db.prepare(`DELETE FROM reply_wait WHERE user_id = ?`).run(userId);
 
-    const adminId = wait.admin_id;
+  if (!wait) return; // игнорируем всё вне режима поддержки
 
-    support.saveUserMessage(userId, text);
-
-    bot.telegram.sendMessage(
-      adminId,
-      `📩 *Ответ от пользователя ${userId}:*\n${text}`,
-      { parse_mode: "Markdown" }
-    );
-
-    return ctx.reply("Сообщение отправлено.", mainMenu());
-  }
-
-  // обычное сообщение в поддержку
   support.saveUserMessage(userId, text);
 
   ADMINS.forEach(a => {
-    bot.telegram.sendMessage(a, `📩 Новое сообщение от ${userId}:\n${text}`);
+    bot.telegram.sendMessage(a, `📩 Сообщение от ${userId}:\n${text}`);
   });
 
-  ctx.reply("Сообщение отправлено в поддержку.", mainMenu());
+  db.prepare(`DELETE FROM reply_wait WHERE user_id = ?`).run(userId);
+
+  ctx.reply("Сообщение отправлено. Ожидай ответа.", mainMenu());
 });
+
+
 
 // --- ПОЛУЧЕНИЕ ЧЕКОВ ---
 attachCheckHandler(bot, mainMenu);
@@ -191,10 +176,19 @@ bot.action("support", async (ctx) => {
 bot.action("support_write", async (ctx) => {
   await ctx.answerCbQuery();
 
-  db.prepare(`DELETE FROM purchases WHERE user_id = ?`).run(ctx.from.id);
+  const userId = ctx.from.id;
 
-  ctx.reply("✏ Напиши сообщение, и админ ответит.");
+  db.prepare(`DELETE FROM reply_wait WHERE user_id = ?`).run(userId);
+
+  db.prepare(`
+    INSERT INTO reply_wait (user_id, admin_id)
+    VALUES (?, NULL)
+  `).run(userId);
+
+  ctx.reply("✏ Напиши сообщение для поддержки.");
 });
+
+
 
 bot.action("back_main", async (ctx) => {
   await ctx.answerCbQuery();
@@ -206,48 +200,60 @@ bot.action(/support_reply_(\d+)/, async (ctx) => {
   await ctx.answerCbQuery();
 
   const adminId = Number(ctx.match[1]);
+  const userId = ctx.from.id;
 
   db.prepare(`
     INSERT OR REPLACE INTO reply_wait (user_id, admin_id)
     VALUES (?, ?)
-  `).run(ctx.from.id, adminId);
+  `).run(userId, adminId);
 
   ctx.reply("✏ Напиши свой ответ:");
 });
 
+
+
 bot.action("support_close", async (ctx) => {
   await ctx.answerCbQuery();
+
+  const userId = ctx.from.id;
+
+  db.prepare(`DELETE FROM reply_wait WHERE user_id = ?`).run(userId);
+
   ctx.editMessageText("Диалог закрыт. Если понадобится помощь — напиши снова.");
 });
+
+
 
 // --- ОТВЕТ АДМИНА ---
 bot.on("message", async (ctx) => {
   if (!isAdmin(ctx.from.id)) return;
 
-  if (ctx.reply_to_message && ctx.reply_to_message.text) {
-    const match = ctx.reply_to_message.text.match(/(\d+)/);
-    if (!match) return;
+  if (!ctx.reply_to_message) return;
 
-    const userId = Number(match[1]);
-    const text = ctx.message.text;
+  const match = ctx.reply_to_message.text.match(/Сообщение от (\d+)/);
+  if (!match) return;
 
-    support.saveAdminReply(userId, text);
+  const userId = Number(match[1]);
+  const text = ctx.message.text;
 
-    ctx.telegram.sendMessage(
-      userId,
-      `🛠 *Ответ поддержки:*\n${text}`,
-      {
-        parse_mode: "Markdown",
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: "✏ Ответить", callback_data: `support_reply_${ctx.from.id}` }],
-            [{ text: "❌ Закрыть", callback_data: "support_close" }]
-          ]
-        }
+  support.saveAdminReply(userId, text);
+
+  ctx.telegram.sendMessage(
+    userId,
+    `🛠 *Ответ поддержки:*\n${text}`,
+    {
+      parse_mode: "Markdown",
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: "✏ Ответить", callback_data: `support_reply_${ctx.from.id}` }],
+          [{ text: "❌ Закрыть", callback_data: "support_close" }]
+        ]
       }
-    );
-  }
+    }
+  );
 });
+
+
 
 // --- РЕФЕРАЛКА ---
 bot.action("referral", async (ctx) => {
