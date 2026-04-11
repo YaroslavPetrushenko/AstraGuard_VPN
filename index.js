@@ -642,8 +642,6 @@ bot.action(/ticket_close_(\d+)/, async (ctx) => {
 
 // ---------------- ОТВЕТ АДМИНА РЕПЛАЕМ ----------------
 
-// ---------------- ОТВЕТ АДМИНА РЕПЛАЕМ ----------------
-
 bot.on("message", async (ctx, next) => {
   const fromId = ctx.from.id;
 
@@ -659,22 +657,12 @@ bot.on("message", async (ctx, next) => {
 
   const text = ctx.message.text;
 
-  // Ищем ID тикета
-  let ticketId = null;
+  // Ищем ID тикета в любом сообщении, где есть #число
+  const match = reply.text.match(/#(\d+)/);
+  if (!match) return next();
 
-  const m1 = reply.text.match(/Тикет\s*#(\d+)/i);
-  const m2 = reply.text.match(/тикете\s*#(\d+)/i);
-  const m3 = reply.text.match(/тикет\s*#(\d+)/i);
-  const m4 = reply.text.match(/#(\d+)/);
+  const ticketId = Number(match[1]);
 
-  if (m1) ticketId = Number(m1[1]);
-  else if (m2) ticketId = Number(m2[1]);
-  else if (m3) ticketId = Number(m3[1]);
-  else if (m4) ticketId = Number(m4[1]);
-
-  if (!ticketId) return next();
-
-  // ❗ ВОТ ЭТОГО НЕ ХВАТАЛО — ЭТО ГЛАВНАЯ ПРИЧИНА
   const ticket = getTicketById(ticketId);
   if (!ticket) return ctx.reply(`Тикет #${ticketId} уже не существует.`);
 
@@ -699,7 +687,6 @@ bot.on("message", async (ctx, next) => {
   // Обновляем карточки у админов
   await refreshTicketCardsForAdmins(bot, ticket);
 });
-
 
 
 // ---------------- РЕФЕРАЛКА ----------------
